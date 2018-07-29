@@ -29,7 +29,7 @@ class LaggedTimeSeries():
             (TBC Timesteps - Uses standard Excel parameters for d, w, ww, m, y)
         Returns:    -   n/a
         """        
-        self.df = df
+        self.df = sanitise(df)
         self.axes = list(self.df.columns.values) #Variable names
 
         self.max_lag_only = max_lag_only
@@ -37,7 +37,7 @@ class LaggedTimeSeries():
             self.t = lag
             self.df = self.__apply_lags__()
 
-        if window_size is not None:
+        if window_size is not None and window_stride is not None:
             self.has_windows = True
             self. __apply_windows__(window_size, window_stride)
         else:
@@ -87,9 +87,12 @@ class LaggedTimeSeries():
 
     @property
     def windows(self):
+
+        if self.has_windows == False:
+            return self.df
         ## Loop Over TimeSeries Range
         for i,dt in enumerate(self.daterange):
-
+            
             ## Ensure Each Division Contains Required Number of Months
             if dt-relativedelta(years   =  self.window_size['YS'],
                                 months  =  self.window_size['MS'],
@@ -109,7 +112,8 @@ class LaggedTimeSeries():
                                                     seconds =  self.window_size['S'],
                                                     microseconds = self.window_size['ms']
                                                     )) : dt]
-    
+
+
     @property
     def headstart(self):
         windows =   [i for i,dt in enumerate(self.daterange) if dt-relativedelta(years   =  self.window_size['YS'],

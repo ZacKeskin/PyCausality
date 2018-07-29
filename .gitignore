@@ -1,0 +1,11 @@
+
+# Private
+Private*
+
+#vscode files
+.vscode/
+
+#Compiled python 
+*.pyc
+
+*DS_Store

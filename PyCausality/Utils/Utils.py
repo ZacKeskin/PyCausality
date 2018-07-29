@@ -18,17 +18,18 @@ class NDHistogram():
         This allows for dimension-agnostic histogram calculations, custom auto-binning and 
         associated data and methods to be stored for each object (e.g. Probability Density etc.)
     """
-    def __init__(self, df, bins=None, max_bins = 5):
+    def __init__(self, df, bins=None, max_bins = 15):
         """
         Arguments:
             df          -   DataFrame passed through from the TransferEntropy class
             bins        -   Bin edges passed through from the TransferEntropy class
-            max_bins   -   Number of bins per each dimension passed through from the TransferEntropy class
+            max_bins    -   Number of bins per each dimension passed through from the TransferEntropy class
         Returns:
             self.pdf    -   This is an N-dimensional Probability Density Function, stored as a
                             Numpy histogram, representing the proportion of samples in each bin.
         """
-        self.df = sanitise(df).reindex(columns= sorted(df.columns))   # Sort axes by name
+        df = sanitise(df)
+        self.df = df.reindex(columns= sorted(df.columns))   # Sort axes by name
         self.max_bins = max_bins
         self.axes = list(self.df.columns.values)
         self.bins = bins
@@ -36,7 +37,7 @@ class NDHistogram():
         
         ## Bins must match number and order of dimensions
         if self.bins is None or set(self.bins.keys()) != set(self.axes):
-            warnings.warn('Incorrect or no bins provided - defaulting to sigma bins')
+            #warnings.warn('Incorrect or no bins provided - defaulting to sigma bins')
             AB = AutoBins(self.df)
             self.bins = AB.sigma_bins(max_bins=max_bins)
             
@@ -332,13 +333,22 @@ class AutoBins():
         ## Return the optimal bin-edges
         return bins
 
-    def sigma_bins(self,max_bins=8):
+    def sigma_bins(self,max_bins=15):
         """ 
-            Finds bins for N-dimensional data, using standard deviation binning.
+            Returns bins for N-dimensional data, using standard deviation binning. Each bin is one S.D in width,
+            centered on the mean. Where outliers exist beyond the maximum number of SDs dictated by the 
+            max_bins parameter, the bins are extended to minimum/maximum values to ensure all data points 
+            are captured. This may mean larger bins in the tails, and up to two bins greater than the max_bins
+            parameter suggests (in the unlikely case of huge outliers on both sides). 
+
         """
         bins = {k:[np.mean(v)-int(max_bins/2)*np.std(v) + i * np.std(v) for i in range(max_bins+1)] 
                 for (k,v) in self.df.iteritems()}   # Note: same as:  self.df.to_dict('list').items()}
-        
+
+        # Since some outliers can be missed, extend bins if any points are not yet captured
+        [bins[k].append(self.df[k].min()) for k in self.df.keys() if self.df[k].min() < min(bins[k])]
+        [bins[k].append(self.df[k].max()) for k in self.df.keys() if self.df[k].max() > max(bins[k])]
+
         if self.lag is not None:
             bins = self.__extend_bins__(bins)
         return bins
