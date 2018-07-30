@@ -17,7 +17,7 @@ from PyCausality.TransferEntropy import *
 from PyCausality.Testing.Test_Utils.Time_Series_Generate import *
 
 AUTO_BINS = True
-N_OBSERVATIONS = 5    # Error Bars
+N_OBSERVATIONS = 10    # Error Bars
 N_SHUFFLES = 50       # Z-score
 
 Ns = [2**5, 2**6, 2**7, 2**8, 2**9, 2**10, 2**11, 2**12, 2**13, 2**14]
@@ -91,6 +91,7 @@ Z_axis.set_xlabel("Number of bins (N)")
 Z_axis.set_ylabel('Significance (z-Score)')
 TE_axis.legend(['4 bins','8 bins', '16 bins'])
 TE_axis.set_ylim(ymin=0,ymax=1.5)
+TE_axis.set_title('Replicating Fig. 4 from Boba et al. - TE vs Data Size')
 
-plt.savefig(os.path.join('Examples','Plots','Logistic_Coupled_Map.png'))
+plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Logistic_Coupled_Map.png'))
 plt.show()

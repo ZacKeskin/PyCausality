@@ -115,5 +115,5 @@ Z_axis.legend(['Significance of TE_X->Y with Equal Bins','Significance of TE_X->
                'Significance of TE_X->Y with Sigma Bins'])
 TE_axis.set_title('Coupled (Similarity = ' +str(SIMILARITY) + ') Gaussian Time Series using Different Bins.')
 
-plt.savefig(os.path.join('Examples','Plots','TE_vs_bins_alpha=' + str(SIMILARITY) + '.png'))
+plt.savefig(os.path.join(os.getcwd(),'PyCausality', 'Examples','Plots','TE_vs_bins_alpha=' + str(SIMILARITY) + '.png'))
 plt.show()

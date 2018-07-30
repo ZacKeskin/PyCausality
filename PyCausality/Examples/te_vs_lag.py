@@ -133,6 +133,6 @@ Z_axis.legend(['Significance of TE (S1->S2)','Significance of TE (S2->S1)'])
 plt.grid(linestyle='dashed')
 
 
-plt.savefig(os.path.join('Examples','Plots','Detect_Lag.png'))
+plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Detect_Lag.png'))
 plt.show()
 

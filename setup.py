@@ -12,5 +12,5 @@ setup(name="PyCausality",
       url="https://github.com/ZacKeskin/PyCausality",
       license="GNU GPLv3",
       packages=find_packages(),
-      install_requires = ['pandas','statsmodels','numpy', 'python-dateutil']
+      install_requires = ['pandas','statsmodels','numpy', 'python-dateutil','nose']
 )
