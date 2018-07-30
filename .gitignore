@@ -9,3 +9,8 @@ Private*
 *.pyc
 
 *DS_Store
+
+# Build Files 
+build/
+dist/
+*.egg-info

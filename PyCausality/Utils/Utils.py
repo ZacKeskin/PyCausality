@@ -68,6 +68,7 @@ class NDHistogram():
             pdf   -   Probabiiity Density Function; this is calculated using the N-dimensional histogram above.
         Returns:
             n/a   
+        Sets entropy for marginal distributions: H(X), H(Y) etc. as well as joint entropy H(X,Y)
         """
         ## Prepare empty dict for marginal entropies along each dimension
         self.H = {}
@@ -86,9 +87,17 @@ class NDHistogram():
             self.H[self.df.columns[0]] = self.H_joint
 
 class AutoBins():
-
+    """
+        Prototyping class for generating data-driven binning.
+        Handles lagged time series, so only DF[X(t), Y(t)] required.
+    """
     def __init__(self, df, lag=None):
         """
+        Args:
+            df      -   (DateFrame) Time series data to classify into bins
+            lag     -   (float)     Lag for data to provided bins for lagged columns also
+        Returns:
+            n/a
         """
         ## Ensure data is in DataFrame form
         self.df = sanitise(df)
@@ -100,6 +109,11 @@ class AutoBins():
     def __knuth_function__(self, M):
         """
             Argmax function for multidimensional Knuth's Rule
+            See: https://arxiv.org/pdf/physics/0605197.pdf
+        Args:   
+            M   -   (list) number of bins in each dimension  e.g.[Mx, My, Mz]
+        Returns:
+            Log Likelihood with this number of bins. (Log of marginal posterior)
         """
         bins =  [list(np.linspace(  self.df[dim].min(), 
                                     self.df[dim].max(), 
@@ -119,7 +133,14 @@ class AutoBins():
                     + np.sum(gammaln(nk.ravel() + 0.5))) 
 
     def __extend_bins__(self, bins):
-        
+        """
+           Function to generate bins for lagged time series not present in self.df
+
+        Args:   
+            bins    -   (Dict of List)  Bins edges calculated by some AutoBins.method()
+        Returns:
+            bins    -   (Dict of lists) Bin edges keyed by column name
+        """
         self.max_lag_only = True # still temporary until we kill this
 
         ## Handle lagging for bins, and calculate default bins where edges are not provided
@@ -132,10 +153,11 @@ class AutoBins():
         
         return bins
 
-    def MIC_bins(self, max_bins = 15):
+    def MIC_bins(self, max_bins=15):
         """
         Method to find optimal bin widths in each dimension, using a naive search to 
-        maximise the mutual information divided by number of bins. 
+        maximise the mutual information divided by number of bins. Only accepts data
+        with two dimensions [X(t),Y(t)].
         We increase the n_bins parameter in each dimension, and take the bins which
         result in the greatest Maximum Information Coefficient (MIC)
         
@@ -146,12 +168,12 @@ class AutoBins():
                             n_bins = [bx,by]
         Calculated using:   argmax { I(X,Y)/ max(n_bins) }
 
-        Arguments:
-            df              -   (DataFrame) Time series data to calculate optimal bins
+        Args:
             max_bins        -   (int)       The maximum allowed bins in each dimension
         Returns:
             opt_edges       -   (dict)      The optimal bin-edges for pdf estimation
                                             using the histogram method, keyed by df column names
+                                            All bins equal-width.
         """
         if len(self.df.columns.values) > 2:
             raise ValueError('Too many columns provided in DataFrame. MIC_bins only accepts 2 columns (no lagged columns)')
@@ -200,84 +222,23 @@ class AutoBins():
         ## Return the optimal bin-edges
         return bins
 
-    def Z_bins(df, endog, exog, lag, max_bins = 10, n_shuffles = 20, MA = 2):
-        """
-        Method to find optimal bin widths in each dimension, using Cross Validation,
-        where optimal is defined by maximising z-scored significance divided by number of bins. 
-        We increase the n_bins parameter in each dimension until z_score/n_bins decreases.
-        Note that this is restricted to equal-width bins only.
-
-        Defined:            edges = {Y:[a,b,c,d], Y-t:[a,b,c,d], X-t:[e,f,g]}
-        Calculated using:   
-
-        Arguments:
-            df              -   (DataFrame) Time series data to calculate optimal bins
-            endog           -   (string)    Fieldname for endogenous (dependent) variable (Y)
-            exog            -   (string)    Fieldname for exogenous (independent) variable (X)
-            lag             -   (int)       The lag used to generate the lagged time series data
-            max_bins        -   (int)       The maximum allowed bins in each dimension
-            significance    -   (float)     From 0 to 1. Significance level for z-score
-            MA              -   (int)       Number of examples in Moving Average calculation, which determines optimum bin number
-        Returns:
-            opt_edges       -   (dict)      The optimal bin-edges for pdf estimation
-                                            using the histogram method
-        """
-
-        ## Split dataset into test and train
-        mask = np.random.rand(len(df)) < 0.8
-        train = df[mask]
-        test = df[~mask]
-        
-
-
-        ## Initialise parameter in each dimension
-        n_bins = [3 for dim in list(train.columns.values)]
-
-        ## Initialise Object to Perform TE Analysis
-        causality = TransferEntropy(    endog = endog,      # Dependent Variable
-                                        exog = exog,           # Independent Variable
-                                        lag = lag
-                                    )
-
-        ## Loop over each dimension 
-        for i, dim in enumerate(train.columns.values):
-
-            ## Initialise parameter for z-score/n_bins
-            params_old = [0] 
-
-            while n_bins[i] < max_bins:
-
-                ## Update dict of bin edges
-                opt_edges = {dim :  list(np.linspace(train[dim].min(), 
-                                                        train[dim].max(), 
-                                                        n_bins[i]))
-                                for i,dim in enumerate(train.columns.values)}
-                
-                
-                ## Calculate TE using these bin widths
-                TE = causality.nonlinear_TE(df = DF, pdf_estimator='histogram', bins=opt_edges, n_shuffles=n_shuffles)
-                
-                ## Consider the bins resulting in most significant TE from X->Y
-                z_score = causality.z_score[0]
-
-                ## Update historical parameters, used for moving average calculation
-                params_old.append(z_score)   
-                if len(params_old) > MA:
-                    params_old.pop(0)
-
-                ## Continue while |z-score/b| is increasing wrt. moving average
-                if abs(z_score) >= abs(np.mean(params_old)):                    
-                    n_bins[i] += 1
-                else:
-                    n_bins[i] -= 1
-                    break
-
-        ## Return the optimal bin-edges
-        print('Using bin-edges: ', opt_edges)
-        return opt_edges
-
     def knuth_bins(self,max_bins=15):
+        """
+        Method to find optimal bin widths in each dimension, using a naive search to 
+        maximise the log-likelihood given data. Only accepts data
+        with two dimensions [X(t),Y(t)]. 
+
+        Derived from Matlab code provided in Knuth (2013):  https://arxiv.org/pdf/physics/0605197.pdf
         
+        (Note that this is restricted to equal-width bins only.)
+
+        Args:
+            max_bins        -   (int)       The maximum allowed bins in each dimension
+        Returns:
+            bins            -   (dict)      The optimal bin-edges for pdf estimation
+                                            using the histogram method, keyed by df column names
+                                            All bins equal-width.
+        """
         if len(self.df.columns.values) > 2:
             raise ValueError('Too many columns provided in DataFrame. knuth_bins only accepts 2 columns (no lagged columns)')
 
@@ -333,15 +294,24 @@ class AutoBins():
         ## Return the optimal bin-edges
         return bins
 
-    def sigma_bins(self,max_bins=15):
+    def sigma_bins(self, max_bins=15):
         """ 
-            Returns bins for N-dimensional data, using standard deviation binning. Each bin is one S.D in width,
-            centered on the mean. Where outliers exist beyond the maximum number of SDs dictated by the 
-            max_bins parameter, the bins are extended to minimum/maximum values to ensure all data points 
-            are captured. This may mean larger bins in the tails, and up to two bins greater than the max_bins
-            parameter suggests (in the unlikely case of huge outliers on both sides). 
+        Returns bins for N-dimensional data, using standard deviation binning: each 
+        bin is one S.D in width, with bins centered on the mean. Where outliers exist 
+        beyond the maximum number of SDs dictated by the max_bins parameter, the
+        bins are extended to minimum/maximum values to ensure all data points are
+        captured. This may mean larger bins in the tails, and up to two bins 
+        greater than the max_bins parameter suggests in total (in the unlikely case of huge
+        outliers on both sides). 
 
+        Args:
+            max_bins        -   (int)       The maximum allowed bins in each dimension
+        Returns:
+            bins            -   (dict)      The optimal bin-edges for pdf estimation
+                                            using the histogram method, keyed by df column names
         """
+
+        
         bins = {k:[np.mean(v)-int(max_bins/2)*np.std(v) + i * np.std(v) for i in range(max_bins+1)] 
                 for (k,v) in self.df.iteritems()}   # Note: same as:  self.df.to_dict('list').items()}
 
@@ -360,6 +330,22 @@ class AutoBins():
     
 
 def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None):
+    """
+        Function for non-parametric density estimation
+
+    Args:
+        df          -       (DataFrame) Samples over which to estimate density
+        gridpoints  -       (int)       Number of gridpoints when integrating KDE over 
+                                        the domain. Used if estimator='kernel'
+        bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
+                                        matrix). Used if estimator='kernel'
+        estimator   -       (string)    'histogram' or 'kernel'
+        bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator
+                                        = 'histogram'
+    Returns:
+        pdf         -       (Numpy ndarray) Probability of a sample being in a specific 
+                                        bin (technically a probability mass)
+    """
 
     if estimator == 'histogram':
         pdf = pdf_histogram(df, bins)
@@ -368,7 +354,20 @@ def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None):
     return pdf
 
 def pdf_kde(df, gridpoints = None, bandwidth = 1):
-    
+    """
+        Function for non-parametric density estimation using Kernel Density Estimation
+
+    Args:
+        df          -       (DataFrame) Samples over which to estimate density
+        gridpoints  -       (int)       Number of gridpoints when integrating KDE over 
+                                        the domain. Used if estimator='kernel'
+        bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
+                                        matrix).
+
+    Returns:
+        Z/Z.sum()   -       (Numpy ndarray) Probability of a sample being between
+                                        specific gridpoints (technically a probability mass)
+    """
     ## Create Meshgrid to capture data
     if gridpoints is None:
         gridpoints = 20
@@ -388,10 +387,36 @@ def pdf_kde(df, gridpoints = None, bandwidth = 1):
     return Z/Z.sum()
 
 def pdf_histogram(df,bins):
+    """
+        Function for non-parametric density estimation using N-Dimensional Histograms
+
+    Args:
+        df            -       (DataFrame) Samples over which to estimate density
+        bins          -       (Dict of lists) Bin edges for NDHistogram. 
+    Returns:
+        histogram.pdf -       (Numpy ndarray) Probability of a sample being in a specific 
+                                    bin (technically a probability mass)
+    """
     histogram = NDHistogram(df=df, bins=bins)        
     return histogram.pdf
 
-def get_entropy(df, gridpoints=20, bandwidth=None, estimator='kernel', bins=None):
+def get_entropy(df, gridpoints=15, bandwidth=None, estimator='kernel', bins=None):
+    """
+        Function for calculating entropy from a probability mass 
+        
+    Args:
+        df          -       (DataFrame) Samples over which to estimate density
+        gridpoints  -       (int)       Number of gridpoints when integrating KDE over 
+                                        the domain. Used if estimator='kernel'
+        bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
+                                        matrix). Used if estimator='kernel'
+        estimator   -       (string)    'histogram' or 'kernel'
+        bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator
+                                        = 'histogram'
+    Returns:
+        entropy     -       (float)     Shannon entropy in bits
+
+    """
     pdf = get_pdf(df, gridpoints, bandwidth, estimator, bins)
     ## log base 2 returns H(X) in bits
     return -np.sum( pdf * ma.log2(pdf).filled(0)) 
@@ -422,7 +447,18 @@ def shuffle_series(DF, only=None):
     return shuffled_DF
 
 def plot_pdf(df,gridpoints=None,bandwidth=None):
-    
+    """
+        Function to plot the pdf, calculated by KDE, of a dataset
+        
+    Args:
+        df          -       (DataFrame) Samples over which to estimate density
+        gridpoints  -       (int)       Number of gridpoints when integrating KDE over 
+                                        the domain. Used if estimator='kernel'
+        bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
+                                        matrix). Used if estimator='kernel'
+    Returns:
+        n/a
+    """
     ## Estimate the PDF from the data
     if gridpoints is None:
         gridpoints = 20
@@ -432,7 +468,7 @@ def plot_pdf(df,gridpoints=None,bandwidth=None):
     slices = [slice(dim.min(),dim.max(),N) for dimname, dim in df.iteritems()]
 
     if len(df.columns) > 3: 
-            print("DataFrame has " + str(len(df.columns)) + " dimensions. Only 3D or less can be plotted")
+            print("DataFrame has " + str(len(df.columns)) + " dimensions. Only 2D or less can be plotted")
         
     elif len(df.columns) == 3:
         print("3D Joint Probability Density Plots TBC")
@@ -455,6 +491,14 @@ def plot_pdf(df,gridpoints=None,bandwidth=None):
         plt.show()
         
 def sanitise(df):
+    """
+        Function to convert DataFrame-like objects into pandas DataFrames
+        
+    Args:
+        df          -        Data in pd.Series or pd.DataFrame format
+    Returns:
+        df          -        Data as pandas DataFrame
+    """
     ## Ensure data is in DataFrame form
     if isinstance(df, pd.DataFrame):
         df = df

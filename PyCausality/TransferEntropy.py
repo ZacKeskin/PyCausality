@@ -12,21 +12,27 @@ from .Utils.Utils import *
 
 
 class LaggedTimeSeries():
-    
+    """
+        Custom wrapper class for pandas DataFrames for performing predictive analysis.
+        Generates lagged time series and performs custom windowing over datetime indexes
+    """
     def __init__(self, df, lag=None, max_lag_only=True, window_size = None, window_stride = None):
         """
         Args:
-            df          -   Pandas DataFrame object of N columns. Must be indexed as an increasing 
-                            time series (i.e. past-to-future), with equal timesteps between each row
-            lags        -   The number of steps to be included. Each increase in Lags will result 
-                            in N additional columns, where N is the number of columns in the original 
-                            dataframe. It will also remove the first N rows.
-            max_lag_only -  Defines whether the returned dataframe contains all lagged timeseries up to 
-                            and including the defined lag, or only the time series equal to this lag value
-            drop_X      -   Defines whether the returned dataframe drops X; if so we have [Y, Y-t, X-t] only
-
-            (TBC Stride - may want e.g. every 7 days etc.)
-            (TBC Timesteps - Uses standard Excel parameters for d, w, ww, m, y)
+            df              -   Pandas DataFrame object of N columns. Must be indexed as an increasing 
+                                time series (i.e. past-to-future), with equal timesteps between each row
+            lags            -   The number of steps to be included. Each increase in Lags will result 
+                                in N additional columns, where N is the number of columns in the original 
+                                dataframe. It will also remove the first N rows.
+            max_lag_only    -   Defines whether the returned dataframe contains all lagged timeseries up to 
+                                and including the defined lag, or only the time series equal to this lag value
+            window_size     -   Dict containing key-value pairs only from within: {'YS':0,'MS':0,'D':0,'H':0,'min':0,'S':0,'ms':0}
+                                Describes the desired size of each window, provided the data is indexed with datetime type. Leave as
+                                None for no windowing. Units follow http://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases
+            window_stride   -   Dict containing key-value pairs only from within: {'YS':0,'MS':0,'D':0,'H':0,'min':0,'S':0,'ms':0}
+                                Describes the size of the step between consecutive windows, provided the data is indexed with datetime type. Leave as
+                                None for no windowing. Units follow http://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases
+                       
         Returns:    -   n/a
         """        
         self.df = sanitise(df)
@@ -45,10 +51,13 @@ class LaggedTimeSeries():
 
     def __apply_lags__(self):
         """
-        Arguments:
+        Args:
             n/a
         Returns:
-            new_df.iloc[self.t:]    -   This is a new dataframe containing all lagged 
+            new_df.iloc[self.t:]    -   This is a new dataframe containing the original columns and
+                                        all lagged columns. Note that the first few rows (equal to self.lag) will
+                                        be removed from the top, since lagged values are of coursenot available
+                                        for these indexes.
         """
         # Create a new dataframe to maintain the new data, dropping rows with NaN
         new_df = self.df.copy(deep=True).dropna()
@@ -73,6 +82,13 @@ class LaggedTimeSeries():
         return new_df.iloc[self.t:]
 
     def __apply_windows__(self, window_size, window_stride):
+        """
+        Args:
+            window_size      -   Dict passed from self.__init__
+            window_stride    -   Dict passed from self.__init__
+        Returns:    
+            n/a              -   Sets the daterange for the self.windows property to iterate along
+        """
         self.window_size =  {'YS':0,'MS':0,'D':0,'H':0,'min':0,'S':0,'ms':0}
         self.window_stride =  {'YS':0,'MS':0,'D':0,'H':0,'min':0,'S':0,'ms':0}
 
@@ -83,11 +99,26 @@ class LaggedTimeSeries():
         self.daterange = pd.date_range(self.df.index.min(),self.df.index.max() , freq=daterangefreq)
 
     def date_diff(self,window_size):
+        """
+        Args: 
+            window_size     -    Dict passed from self.windows function
+        Returns:
+            start_date      -    The start date of the proposed window
+            end_date        -    The end date of the proposed window    
+        
+        This function is TBC - proposed due to possible duplication of the relativedelta usage in self.windows and self.headstart
+        """
         pass
 
     @property
     def windows(self):
-
+        """
+        Args: 
+            n/a
+        Returns:
+            windows         -   Generator defining a pandas DataFrame for each window of the data. 
+                                Usage like:   [window for window in LaggedTimeSeries.windows]
+        """
         if self.has_windows == False:
             return self.df
         ## Loop Over TimeSeries Range
@@ -113,31 +144,50 @@ class LaggedTimeSeries():
                                                     microseconds = self.window_size['ms']
                                                     )) : dt]
 
-
     @property
     def headstart(self):
-        windows =   [i for i,dt in enumerate(self.daterange) if dt-relativedelta(years   =  self.window_size['YS'],
-                                                                            months  =  self.window_size['MS'],
-                                                                            days    =  self.window_size['D'],
-                                                                            hours   =  self.window_size['H'],
-                                                                            minutes =  self.window_size['min'],
-                                                                            seconds =  self.window_size['S'],
-                                                                            microseconds = self.window_size['ms']
-                                                                            ) < self.df.index.min() ]
+        """
+        Args: 
+            n/a
+        Returns:
+            len(windows)    -   The number of windows which would have start dates before the desired date range. 
+                                Used in TransferEntropy class to slice off incomplete windows.
+            
+        """
+        windows =   [i for i,dt in enumerate(self.daterange) 
+                            if dt-relativedelta(    years   =  self.window_size['YS'],
+                                                    months  =  self.window_size['MS'],
+                                                    days    =  self.window_size['D'],
+                                                    hours   =  self.window_size['H'],
+                                                    minutes =  self.window_size['min'],
+                                                    seconds =  self.window_size['S'],
+                                                    microseconds = self.window_size['ms']
+                                        ) < self.df.index.min() ]
         ## i.e. count from the first window which falls entirely after the earliest date
         return len(windows)
 
 class TransferEntropy():
+    """
+        Functional class to calculate Transfer Entropy between time series, to detect causal signals.
+        Currently accepts two series: X(t) and Y(t). Future extensions planned to accept additional endogenous 
+        series: X1(t), X2(t), X3(t) etc. 
+    """
 
     def __init__(self, DF, endog, exog, lag = None, window_size=None, window_stride=None):
         """
-        Arguments:
+        Args:
             DF            -   (DataFrame) Time series data for X and Y (NOT including lagged variables)
             endog         -   (string)    Fieldname for endogenous (dependent) variable Y
             exog          -   (string)    Fieldname for exogenous (independent) variable X
             lag           -   (integer)   Number of periods (rows) by which to lag timeseries data
-            window_size   -   (dict)
-            window_stride -   (dict)
+            window_size   -   (Dict)      Must contain key-value pairs only from within: {'YS':0,'MS':0,'D':0,'H':0,'min':0,'S':0,'ms':0}
+                                          Describes the desired size of each window, provided the data is indexed with datetime type. Leave as
+                                          None for no windowing. Units follow http://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases
+            window_stride -   (Dict)      Must contain key-value pairs only from within: {'YS':0,'MS':0,'D':0,'H':0,'min':0,'S':0,'ms':0}
+                                          Describes the size of the step between consecutive windows, provided the data is indexed with datetime type. Leave as
+                                          None for no windowing. Units follow http://pandas.pydata.org/pandas-docs/stable/timeseries.html#timeseries-offset-aliases
+        Returns:
+            n/a
         """
         self.lts = LaggedTimeSeries(df=sanitise(DF), 
                                     lag=lag, 
@@ -186,7 +236,8 @@ class TransferEntropy():
         """
         Linear Transfer Entropy for directional causal inference
 
-        Defined:            g-causality * 0.5, where g-causality d
+        Defined:            g-causality * 0.5, where g-causality described by the reduction in variance of the residuals
+                            when considering side information.
         Calculated using:   log(var(e_joint)) - log(var(e_independent)) where e_joint and e_independent
                             represent the residuals from OLS fitting in the joint (X(t),Y(t)) and reduced (Y(t)) cases
 
@@ -233,18 +284,23 @@ class TransferEntropy():
         Calculated using:   H(Y|Y-t,X-t) = H(Y,Y-t,X-t) - H(Y,Y-t)  and finding joint entropy through density estimation
 
         Arguments:
-            pdf_estimator   -   (string) "Histogram" only current method available. Used to define which
-                                        method is preferred for density estimation of the distribution
-            bins            -   (dict of lists) optional parameter to provide hard-coded bin-edges. Dict keys 
-                                        must contain names of variables; dict values must be lists
-                                        containing bin-edge numerical values. Lagged variables are handled 
-                                        automatically so these need not be included.
-            n_shuffles      -   (float) Number of times to shuffle the dataframe, destroyig temporality
+            pdf_estimator   -   (string)    'Histogram' or 'kernel' Used to define which method is preferred for density estimation
+                                            of the distribution - either histogram or KDE
+            bins            -   (dict of lists) Optional parameter to provide hard-coded bin-edges. Dict keys 
+                                            must contain names of variables - including lagged columns! Dict values must be lists
+                                            containing bin-edge numerical values. 
+            bandwidth       -   (float)     Optional parameter for custom bandwidth in KDE. This is a scalar multiplier to the covariance
+                                            matrix used (see: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.covariance_factor.html)
+            gridpoints      -   (float)     Number of gridpoints (in each dimension) to discretise the probablity space when performing
+                                            integration of the kernel density estimate. Increasing this gives more precision, but significantly
+                                            increases execution time
+            n_shuffles      -   (float)     Number of times to shuffle the dataframe, destroying the time series temporality, in order to 
+                                            perform significance testing.
 
         Returns:
             transfer_entropies  -  (list) Directional Transfer Entropies from X(t)->Y(t) and Y(t)->X(t) respectively
-            (p_value)           -  (set as property self.p_value) p-value with respect to input significance threshold
-            (z_score)           -  (set as property self.z_score) z-score with respect to input significance threshold
+        
+        (Also stores TE, Z-score and p-values in self.results - for each window if windows defined.)
         """
 
 
@@ -333,7 +389,7 @@ class TransferEntropy():
                                         lag = self.lag, 
                                         n_shuffles = n_shuffles, 
                                         pdf_estimator = pdf_estimator, 
-                                        bins = bins,
+                                        bins = self.bins,
                                         bandwidth = bandwidth)
 
                 shuffled_TEs.append(TE_mean)
@@ -356,24 +412,37 @@ class TransferEntropy():
         return transfer_entropies
 
     def add_results(self,dict):
+        """
+        Args:
+            dict    -   JSON-style data to store in existing self.results DataFrame
+        Returns:
+            n/a
+        """
         for (k,v) in dict.items():
             self.results[str(k)] = v 
          
 def significance(df, TE, endog, exog, lag, n_shuffles, pdf_estimator, bins, bandwidth, both=True):
         """
-        p-value for significance of hypothesis test, for both X(t)->Y(t) and Y(t)->X(t) directions
-
-        Defined:            
+        Perform significance analysis on the hypothesis test of statistical causality, for both X(t)->Y(t)
+        and Y(t)->X(t) directions
+   
         Calculated using:  Assuming stationarity, we shuffle the time series to provide the null hypothesis. 
-                           The proportion of tests where TE > TE_shuffled gives the significance level.
+                           The proportion of tests where TE > TE_shuffled gives the p-value significance level.
+                           The amount by which the calculated TE is greater than the average shuffled TE, divided
+                           by the standard deviation of the results, is the z-score significance level.
 
         Arguments:
-            TE          -      (list) Contains the transfer entropy in each direction, i.e. [TE_XY, TE_YX]
-            n_shuffles  -     (float) Number of times to shuffle the dataframe, destroyig temporality
-            both        -      (Bool) Whether to shuffle both endog and exog variables (z-score) or just exog                                  variables (giving z*-score)  
+            TE              -      (list)    Contains the transfer entropy in each direction, i.e. [TE_XY, TE_YX]
+            endog           -      (string)  The endogenous variable in the TE analysis being significance tested (i.e. X or Y) 
+            exog            -      (string)  The exogenous variable in the TE analysis being significance tested (i.e. X or Y) 
+            pdf_estimator   -      (string)  The pdf_estimator used in the original TE analysis
+            bins            -      (Dict of lists)  The bins used in the original TE analysis
+
+            n_shuffles      -      (float) Number of times to shuffle the dataframe, destroyig temporality
+            both            -      (Bool) Whether to shuffle both endog and exog variables (z-score) or just exog                                  variables (giving z*-score)  
         Returns:
-            p_value     -      Probablity of observing the result given the null hypothesis
-            z_score     -      Number of Standard Deviations result is from mean (normalised)
+            p_value         -      Probablity of observing the result given the null hypothesis
+            z_score         -      Number of Standard Deviations result is from mean (normalised)
         """ 
 
         ## Prepare array for Transfer Entropy of each Shuffle

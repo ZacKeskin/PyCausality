@@ -198,8 +198,13 @@ def test_get_pdf():
             ## Calculate the PDF
             pdf_kde  = get_pdf(TS[['data']], estimator='kernel', gridpoints=20,bandwidth=0.6)
             pdf_hist = get_pdf(TS[['data']], estimator='histogram')
-            plt.plot(np.linspace(data.min(),data.max(),20),pdf_kde)
+            
 
+            ## Test that a pdf sums to 1 (to 8 d.p.)
+            assert_almost_equal(pdf_hist.sum(),1.0,8)
+            assert_almost_equal(pdf_kde.sum(),1.0,8)
+
+            plt.plot(np.linspace(data.min(),data.max(),20),pdf_kde)
             ## Find probability of being < mean
             cdfs_kde.append(np.sum(pdf_kde[:10]))
             cdfs_hist.append(np.sum(pdf_kde[:10]))
@@ -209,6 +214,7 @@ def test_get_pdf():
     assert_almost_equal(np.average(cdfs_hist),0.5,1)
 
     #plt.show() # It's a cool plot
+
 
 def test_get_pdfND():
     """
@@ -240,7 +246,8 @@ def test_get_pdfND():
 
 def test_joint_entropy():
     """
-        Test that our implemented function to return the entropy corresponds to Scipy's entropy method
+        Test that our implemented function to return the entropy corresponds 
+        to Scipy's entropy method
     """
     gridpoints = 10 # for KDE estimation
 
@@ -248,16 +255,16 @@ def test_joint_entropy():
 
     data = pd.DataFrame(S)
 
-    ## pdf required for scipy.stats.entropy. Uses KDE to match with scipy. Valid providing test_get_pdf() passes   
-    pdf = get_pdf(data,gridpoints=gridpoints) 
+    ## pdf required for scipy.stats.entropy. Uses KDE to match with scipy. 
+    pdf = get_pdf(data,gridpoints=gridpoints) # Valid providing test_get_pdf() passes   
 
     ## The estimated entropy should correspond to scipy's value (to 5 d.p.) 
     assert_almost_equal(get_entropy(data,gridpoints=gridpoints), entropy(pdf,base=2), 5)
 
 def test_joint_entropyND():
     """
-        Test that our implemented function to return the entropy corresponds to Scipy's entropy method
-        in multiple dimensions.
+        Test that our implemented function to return the entropy corresponds 
+        to Scipy's entropy method in multiple dimensions.
     """
     gridpoints = 10 # for KDE estimation
 
