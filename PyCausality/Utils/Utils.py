@@ -44,7 +44,7 @@ class NDHistogram():
             AB = AutoBins(self.df)
             self.bins = AB.sigma_bins(max_bins=max_bins)
             
-        ordered_bins = [self.bins[key] for key in sorted(self.bins.keys())]
+        ordered_bins = [sorted(self.bins[key]) for key in sorted(self.bins.keys())]
 
         ## Create ND histogram (np.histogramdd doesn't scale down to 1D)
         if self.n_dims == 1:
