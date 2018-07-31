@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name="PyCausality",
-      version="0.0.4",
+      version="0.0.5",
       python_requires=">3.5.2",
       description="Python package for detection and quantification \
                     of statistical causality between time series",
@@ -12,5 +12,5 @@ setup(name="PyCausality",
       url="https://github.com/ZacKeskin/PyCausality",
       license="GNU GPLv3",
       packages=find_packages(),
-      install_requires = ['pandas','statsmodels','numpy', 'python-dateutil','nose']
+      install_requires = ['pandas','statsmodels','numpy', 'python-dateutil==2.6.1','nose']
 )
