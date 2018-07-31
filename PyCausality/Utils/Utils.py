@@ -1,8 +1,11 @@
 import pandas as pd
 import numpy as np
-from numpy import ma, diff
-from scipy import stats, optimize
-from scipy.special import gammaln
+from numpy import ma, atleast_2d, pi, sqrt, sum, transpose
+from scipy import stats, optimize, linalg, special
+from scipy.special import gammaln, logsumexp
+from scipy._lib.six import callable, string_types
+
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import warnings
@@ -323,13 +326,70 @@ class AutoBins():
             bins = self.__extend_bins__(bins)
         return bins
 
+class kde(stats.gaussian_kde):
+    """
+    Subclass of scipy.stats.gaussian_kde. This is to enable the passage of a pre-defined covariance matrix, via the
+    `covar` parameter. This is handled internally within TransferEntropy class.
+    The matrix is calculated on the overall dataset, before windowing, which allows for consistency between windows,
+    and avoiding duplicative computational operations, compared with calculating the covariance each window.
+
+    Functions left as much as possible identical to scipi.stats.gaussian_kde; docs available:
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.html
+    """
+    def __init__(self, dataset, bw_method=None, df=None, covar=None):
+        self.dataset = atleast_2d(dataset)
+        if not self.dataset.size > 1:
+            raise ValueError("`dataset` input should have multiple elements.")
+
+        self.d, self.n = self.dataset.shape
+        self.set_bandwidth(bw_method=bw_method, covar=covar)
+
+
+    def set_bandwidth(self, bw_method=None, covar=None):
+        
+        if bw_method is None:
+            pass
+        elif bw_method == 'scott':
+            self.covariance_factor = self.scotts_factor
+        elif bw_method == 'silverman':
+            self.covariance_factor = self.silverman_factor
+        elif np.isscalar(bw_method) and not isinstance(bw_method, string_types):
+            self._bw_method = 'use constant'
+            self.covariance_factor = lambda: bw_method
+        elif callable(bw_method):
+            self._bw_method = bw_method
+            self.covariance_factor = lambda: self._bw_method(self)
+        else:
+            msg = "`bw_method` should be 'scott', 'silverman', a scalar " \
+                  "or a callable."
+            raise ValueError(msg)
+
+        self._compute_covariance(covar)
+
+    def _compute_covariance(self, covar):
+
+        if covar is not None:
+            self._data_covariance = covar
+            self._data_inv_cov = linalg.inv(self._data_covariance)
+
+        self.factor = self.covariance_factor()
+        # Cache covariance and inverse covariance of the data
+        if not hasattr(self, '_data_inv_cov'):
+            self._data_covariance = atleast_2d(np.cov(self.dataset, rowvar=1,
+                                               bias=False))
+            self._data_inv_cov = linalg.inv(self._data_covariance)
+
+        self.covariance = self._data_covariance * self.factor**2
+        self.inv_cov = self._data_inv_cov / self.factor**2
+        self._norm_factor = sqrt(linalg.det(2*pi*self.covariance)) * self.n
+
 
 ##############################################################################################################
 ###   U T I L I T Y    F U N C T I O N S 
 ##############################################################################################################    
     
 
-def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None):
+def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None, covar=None):
     """
         Function for non-parametric density estimation
 
@@ -340,8 +400,9 @@ def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None):
         bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
                                         matrix). Used if estimator='kernel'
         estimator   -       (string)    'histogram' or 'kernel'
-        bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator
-                                        = 'histogram'
+        bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator = 'histogram'
+        covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
+                                        Used if estimator = 'kernel'
     Returns:
         pdf         -       (Numpy ndarray) Probability of a sample being in a specific 
                                         bin (technically a probability mass)
@@ -350,10 +411,10 @@ def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None):
     if estimator == 'histogram':
         pdf = pdf_histogram(df, bins)
     else:
-        pdf = pdf_kde(df, gridpoints, bandwidth)
+        pdf = pdf_kde(df, gridpoints, bandwidth, covar)
     return pdf
 
-def pdf_kde(df, gridpoints = None, bandwidth = 1):
+def pdf_kde(df, gridpoints=None, bandwidth=1, covar=None):
     """
         Function for non-parametric density estimation using Kernel Density Estimation
 
@@ -363,6 +424,9 @@ def pdf_kde(df, gridpoints = None, bandwidth = 1):
                                         the domain. Used if estimator='kernel'
         bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
                                         matrix).
+        covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
+                                        If None, these are calculated from df during the 
+                                        KDE analysis
 
     Returns:
         Z/Z.sum()   -       (Numpy ndarray) Probability of a sample being between
@@ -380,7 +444,7 @@ def pdf_kde(df, gridpoints = None, bandwidth = 1):
     ## Pass Meshgrid to Scipy Gaussian KDE to Estimate PDF
     positions = np.vstack([X.ravel() for X in grids])
     values = df.values.T
-    kernel = stats.gaussian_kde(values, bw_method= bandwidth)
+    kernel = kde(values, bw_method=bandwidth, covar=covar)
     Z = np.reshape(kernel(positions).T, grids[0].shape) 
 
     ## Normalise 
@@ -400,7 +464,7 @@ def pdf_histogram(df,bins):
     histogram = NDHistogram(df=df, bins=bins)        
     return histogram.pdf
 
-def get_entropy(df, gridpoints=15, bandwidth=None, estimator='kernel', bins=None):
+def get_entropy(df, gridpoints=15, bandwidth=None, estimator='kernel', bins=None, covar=None):
     """
         Function for calculating entropy from a probability mass 
         
@@ -413,11 +477,13 @@ def get_entropy(df, gridpoints=15, bandwidth=None, estimator='kernel', bins=None
         estimator   -       (string)    'histogram' or 'kernel'
         bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator
                                         = 'histogram'
+        covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
+                                        Used if estimator = 'kernel'
     Returns:
         entropy     -       (float)     Shannon entropy in bits
 
     """
-    pdf = get_pdf(df, gridpoints, bandwidth, estimator, bins)
+    pdf = get_pdf(df, gridpoints, bandwidth, estimator, bins, covar)
     ## log base 2 returns H(X) in bits
     return -np.sum( pdf * ma.log2(pdf).filled(0)) 
 
@@ -446,7 +512,7 @@ def shuffle_series(DF, only=None):
     
     return shuffled_DF
 
-def plot_pdf(df,gridpoints=None,bandwidth=None):
+def plot_pdf(df,gridpoints=None, bandwidth=None, covar=None):
     """
         Function to plot the pdf, calculated by KDE, of a dataset
         
@@ -456,6 +522,8 @@ def plot_pdf(df,gridpoints=None,bandwidth=None):
                                         the domain. Used if estimator='kernel'
         bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
                                         matrix). Used if estimator='kernel'
+        covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
+                                        
     Returns:
         n/a
     """

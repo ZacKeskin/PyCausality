@@ -23,7 +23,7 @@ SEED = None                # Change pseudo-RNG seed; useful for repeat results &
 DATA_POINTS = 250
 BANDWIDTH = 0.8            # Choose bandwidth for KDE
 SIMILARITY = np.linspace(0,0.9,9)
-N_SHUFFLES = 20
+N_SHUFFLES = 50
 
 ## Prepare Results
 TE_XY_Hists = []
@@ -51,6 +51,9 @@ for a in SIMILARITY:
     ## To get data which is Gaussian distributed, we use a scaled %-change with mu = 0
     DF = DF.pct_change().iloc[1:]
 
+    #plot_pdf(DF)
+    #plt.show()
+
     ## Initialise TE object
     causality = TransferEntropy(DF = DF,
                                 endog = 'S2',          # Dependent Variable
@@ -59,11 +62,12 @@ for a in SIMILARITY:
                                 )
 
     ## Uncomment to Choose Bins
-    edges = None # Uses sigma_binning by default
-    #auto = AutoBins(DF[['S1','S2']])
-    #edges = auto.knuth_bins(max_bins=5)
+    #edges = None # Uses sigma_binning by default
+    auto = AutoBins(DF[['S1','S2']])
+    edges = auto.knuth_bins(max_bins=20)
 
     ## Calculate TE using Histogram
+    #(TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'kernel', n_shuffles=N_SHUFFLES)
     (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'histogram', bins= edges, n_shuffles=N_SHUFFLES)
     TE_XY_Hists.append(TE_XY)
     TE_YX_Hists.append(TE_YX)
@@ -73,7 +77,7 @@ for a in SIMILARITY:
     print("Hist Z-scores: \t\t", causality.results['z_score_XY'].iloc[0], '\t', causality.results['z_score_YX'].iloc[0])
 
     ## Calculate TE using KDE
-    (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'kernel', bandwidth=BANDWIDTH, n_shuffles=N_SHUFFLES)
+    (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'kernel', bandwidth=BANDWIDTH, gridpoints=20, n_shuffles=N_SHUFFLES)
     TE_XY_KDEs.append(TE_XY)
     TE_YX_KDEs.append(TE_YX)
     z_scores_XY_KDEs.append(causality.results['z_score_XY'].iloc[0])
@@ -136,4 +140,5 @@ Z_axis.legend(['Significance of TE from S1->S2 (Histogram)','Significance of TE 
                 'Significance of TE from S2->S1 (Histogram)','Significance of TE from S2->S1 (KDE)'])
 
 plt.grid(linestyle='dashed')
+plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Histogram_vs_KDE.png'))
 plt.show()

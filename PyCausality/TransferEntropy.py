@@ -206,7 +206,20 @@ class TransferEntropy():
         self.endog = endog                             # Dependent Variable Y
         self.exog = exog                               # Independent Variable X
         self.lag = lag
+
         
+        """ If using KDE, this ensures the covariance matrices are calculated once over all data, rather
+            than for each window. This saves computational time and provides a fair point for comparison."""
+        self.covars = [[],[]]
+        for i,(X,Y) in enumerate({self.exog:self.endog, self.endog:self.exog}.items()):
+            X_lagged = X+'_lag'+str(self.lag)
+            Y_lagged = Y+'_lag'+str(self.lag)
+
+            self.covars[i] = [  np.cov(self.lts.df[[Y,Y_lagged,X_lagged]].values.T),
+                                np.cov(self.lts.df[[X_lagged,Y_lagged]].values.T),
+                                np.cov(self.lts.df[[Y,Y_lagged]].values.T),
+                                np.ones(shape=(1,1)) * self.lts.df[Y_lagged].std()**2 ]
+
     def __regression__(self, DF, endog, regressors=None):
         """
         Perform Regression analysis using OLS to calculate variance between Endogenous (Dependent) variable and 
@@ -280,7 +293,7 @@ class TransferEntropy():
         """
         NonLinear Transfer Entropy for directional causal inference
 
-        Defined:            TE = TE_XY - TE_YX      where TE_XY = H(Y|Y-t,X-t) - H(Y|Y-t)
+        Defined:            TE = TE_XY - TE_YX      where TE_XY = H(Y|Y-t) - H(Y|Y-t,X-t)
         Calculated using:   H(Y|Y-t,X-t) = H(Y,Y-t,X-t) - H(Y,Y-t)  and finding joint entropy through density estimation
 
         Arguments:
@@ -345,28 +358,32 @@ class TransferEntropy():
                                 bandwidth = bandwidth, 
                                 estimator = pdf_estimator,
                                 bins = {k:v for (k,v) in self.bins.items()
-                                        if k in[Y,Y_lagged,X_lagged]})
+                                        if k in[Y,Y_lagged,X_lagged]},
+                                covar = self.covars[i][0])
                 ## 2. H(Y-t,X-t)
                 H2 = get_entropy(df = df[[X_lagged,Y_lagged]],
                                 gridpoints = gridpoints,
                                 bandwidth = bandwidth,
                                 estimator = pdf_estimator,
                                 bins = {k:v for (k,v) in self.bins.items() 
-                                        if k in [X_lagged,Y_lagged]}) 
+                                        if k in [X_lagged,Y_lagged]},
+                                covar = self.covars[i][1]) 
                 ## 3. H(Y,Y-t)  
                 H3 = get_entropy(df = df[[Y,Y_lagged]],
                                 gridpoints = gridpoints,
                                 bandwidth  = bandwidth,
                                 estimator = pdf_estimator,
                                 bins =  {k:v for (k,v) in self.bins.items() 
-                                        if k in [Y,Y_lagged]})
+                                        if k in [Y,Y_lagged]},
+                                covar = self.covars[i][2])
                 ## 4. H(Y-t)  
                 H4 = get_entropy(df = df[[Y_lagged]],
                                 gridpoints = gridpoints,
                                 bandwidth  = bandwidth,
                                 estimator = pdf_estimator,
                                 bins =  {k:v for (k,v) in self.bins.items() 
-                                        if k in [Y_lagged]})                
+                                        if k in [Y_lagged]},
+                                covar = self.covars[i][3])                
 
 
                 ### Calculate Conditonal Entropy using: H(Y|X-t,Y-t) = H(Y,X-t,Y-t) - H(X-t,Y-t)
