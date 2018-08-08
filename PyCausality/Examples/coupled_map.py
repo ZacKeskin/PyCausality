@@ -17,19 +17,19 @@ from PyCausality.TransferEntropy import *
 from PyCausality.Testing.Test_Utils.Time_Series_Generate import *
 
 AUTO_BINS = True
-N_OBSERVATIONS = 10    # Error Bars
+N_OBSERVATIONS = 6    # Error Bars
 N_SHUFFLES = 50       # Z-score
 
-Ns = [2**5, 2**6, 2**7, 2**8, 2**9, 2**10, 2**11, 2**12, 2**13, 2**14]
+Ns = [2**5, 2**6, 2**7, 2**8, 2**9, 2**10, 2**11, 2**12, 2**13, 2**14, 2**15, 2**16]
 SIMILARITY = np.linspace(0,0.9,9)
 
 
 ## Prepare Plot
 plt.style.use('seaborn')
-fig, (TE_axis, Z_axis) = plt.subplots(nrows=2,ncols=1,sharex=True)
+fig, (TE_axis, Z_axis) = plt.subplots(figsize=(5, 8), nrows=2,ncols=1,sharex=True)
 
 
-
+markers = ["o","^","s"]
 ## Perform Analysis for different bins                           
 for i,n_bins in enumerate([4,8,16]):
 
@@ -51,7 +51,7 @@ for i,n_bins in enumerate([4,8,16]):
         
         observations = []
 
-        for i in range(N_OBSERVATIONS):
+        for j in range(N_OBSERVATIONS):
             
             ## Randomise initial conditions
             S1 = np.random.rand()
@@ -80,8 +80,9 @@ for i,n_bins in enumerate([4,8,16]):
         Z_XYs.append(causality.results['z_score_XY'].iloc[0])
         
 
-    TE_axis.errorbar(Ns, TE_XYs, yerr=errors, fmt='-',linewidth = 1, capsize=2, elinewidth=0.5, markeredgewidth=0.5)
-    Z_axis.plot(Ns, Z_XYs, linewidth = 1.5, linestyle = ':')
+    TE_axis.errorbar(Ns, TE_XYs, yerr=errors, fmt='-', marker = markers[i], linewidth = 1, capsize=2, elinewidth=0.5, markeredgewidth=0.5)
+    Z_axis.semilogy(Ns, Z_XYs, linewidth = 1.5, linestyle = ':')
+    Z_axis.set_ylim(ymin=1)
 
 
 ## Format Plots
@@ -91,7 +92,7 @@ Z_axis.set_xlabel("Number of bins (N)")
 Z_axis.set_ylabel('Significance (z-Score)')
 TE_axis.legend(['4 bins','8 bins', '16 bins'])
 TE_axis.set_ylim(ymin=0,ymax=1.5)
-TE_axis.set_title('Replicating Fig. 4 from Boba et al. - TE vs Data Size')
+TE_axis.set_title('Replicating Fig. 4 from Boba et al. - TE vs Data Size',fontsize=11)
 
-plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Logistic_Coupled_Map.png'))
+plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Coupled_Map.png'))
 plt.show()

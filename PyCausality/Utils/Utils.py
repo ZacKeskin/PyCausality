@@ -39,8 +39,11 @@ class NDHistogram():
         self.n_dims = len(self.axes)
         
         ## Bins must match number and order of dimensions
-        if self.bins is None or set(self.bins.keys()) != set(self.axes):
-            #warnings.warn('Incorrect or no bins provided - defaulting to sigma bins')
+        if self.bins is None:
+            AB = AutoBins(self.df)
+            self.bins = AB.sigma_bins(max_bins=max_bins)
+        elif set(self.bins.keys()) != set(self.axes):
+            warnings.warn('Incompatible bins provided - defaulting to sigma bins')
             AB = AutoBins(self.df)
             self.bins = AB.sigma_bins(max_bins=max_bins)
             
@@ -204,7 +207,7 @@ class AutoBins():
                 ## Calculate Maximum Information Coefficient
                 HDE = NDHistogram(self.df, edges)
                 
-                I_xy = sum(HDE.H.values()) - HDE.H_joint
+                I_xy = sum([H for H in HDE.H.values()]) - HDE.H_joint
 
                 MIC = I_xy / np.log2(np.min(n_bins))
                 
