@@ -112,32 +112,6 @@ class AutoBins():
         self.N = len(self.df)
         self.lag = lag
 
-    def __knuth_function__(self, M):
-        """
-            Argmax function for multidimensional Knuth's Rule
-            See: https://arxiv.org/pdf/physics/0605197.pdf
-        Args:   
-            M   -   (list) number of bins in each dimension  e.g.[Mx, My, Mz]
-        Returns:
-            Log Likelihood with this number of bins. (Log of marginal posterior)
-        """
-        bins =  [list(np.linspace(  self.df[dim].min(), 
-                                    self.df[dim].max(), 
-                                    int(M[i])+1))
-                                for i,dim in enumerate(self.df.columns.values)]
-
-        nk, bins = np.histogramdd(self.df.values,bins)
-        
-        ## Note:  M is number of bins in total Mx * My * Mz ... etc.
-
-        M = np.prod(M)
-
-        return -( self.N * np.log(M)
-                    + gammaln(0.5 * M)
-                    - M * gammaln(0.5)
-                    - gammaln(self.N + 0.5 * M)
-                    + np.sum(gammaln(nk.ravel() + 0.5))) 
-
     def __extend_bins__(self, bins):
         """
            Function to generate bins for lagged time series not present in self.df
