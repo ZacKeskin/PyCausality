@@ -8,7 +8,7 @@ from scipy._lib.six import callable, string_types
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
-import warnings
+import warnings, sys
 
 ##############################################################################################################
 ###   U T I L I T Y    C L A S S E S

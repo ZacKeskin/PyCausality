@@ -5,7 +5,6 @@ from copy import deepcopy
 
 from dateutil.relativedelta import relativedelta
 
-import sys
 import warnings
 
 from .Utils.Utils import *
@@ -245,11 +244,11 @@ class TransferEntropy():
         results = model.fit()
         return (results.fittedvalues, results.resid)
 
-    def linear_TE(self, df):
+    def linear_TE(self):
         """
         Linear Transfer Entropy for directional causal inference
 
-        Defined:            g-causality * 0.5, where g-causality described by the reduction in variance of the residuals
+        Defined:            G-causality * 0.5, where G-causality described by the reduction in variance of the residuals
                             when considering side information.
         Calculated using:   log(var(e_joint)) - log(var(e_independent)) where e_joint and e_independent
                             represent the residuals from OLS fitting in the joint (X(t),Y(t)) and reduced (Y(t)) cases
@@ -259,33 +258,55 @@ class TransferEntropy():
         Returns:
             transfer_entropies  -  (list) Directional Linear Transfer Entropies from X(t)->Y(t) and Y(t)->X(t) respectively
         """
+        ## Prepare lists for storing results
+        TEs = []
 
-         ## Initialise list to return TEs
-        transfer_entropies = [0,0]
+         ## Loop over all windows
+        for i,df in enumerate(self.df):
+            df = deepcopy(df)
+
+            ## Shows user that something is happening
+            if self.lts.has_windows is True:
+                print("Window ending: ", self.date_index[i])
+
+            ## Initialise list to return TEs
+            transfer_entropies = [0,0]
+
         
-        ## Require us to compare information transfer bidirectionally
-        for i,(X,Y) in enumerate({self.exog:self.endog, self.endog:self.exog}.items()):
+            ## Require us to compare information transfer bidirectionally
+            for i,(X,Y) in enumerate({self.exog:self.endog, self.endog:self.exog}.items()):
 
-            ## Note X-t 
-            X_lagged = X+'_lag'+str(self.lag)
+                ## Note X-t, Y-t
+                X_lagged = X+'_lag'+str(self.lag)
+                Y_lagged = Y+'_lag'+str(self.lag)
 
-            ## Calculate Residuals after OLS Fitting, for both Independent and Joint Cases
-            joint_df = deepcopy(df).drop(X,axis=1)
-            joint_residuals = self.__regression__(DF=joint_df, endog=Y)
-     
-            independent_df = deepcopy(df).drop([X,X_lagged],axis=1)
-            independent_residuals = self.__regression__(DF=independent_df, endog=Y)
-            
-            ## Calculate Variance of Residuals
-            joint_variance = np.var(joint_residuals)
-            independent_variance = np.var(independent_residuals)
-
-            ## Calculate G-Causality
-            GC = np.log(joint_variance/independent_variance)
-
-            ## Calculate Linear Transfer Entropy
-            transfer_entropies[i] = GC/2
+                ## Calculate Residuals after OLS Fitting, for both Independent and Joint Cases
+                joint_df = deepcopy(df).drop(X,axis=1)
+                joint_residuals = sm.OLS(df[Y], sm.add_constant(df[[Y_lagged,X_lagged]])).fit() #self.__regression__(DF=joint_df, endog=Y)
         
+                independent_df = deepcopy(df).drop([X,X_lagged],axis=1)
+                independent_residuals = sm.OLS(df[Y], sm.add_constant(df[Y_lagged])).fit() #self.__regression__(DF=independent_df, endog=Y)
+                
+                ## Calculate Variance of Residuals
+                #joint_variance = np.var(joint_residuals)
+                #independent_variance = np.var(independent_residuals)
+
+                ## Adopting methods from statsmodels.stattools.grangercausalitytests
+                GC = ((independent_residuals.ssr - joint_residuals.ssr) /
+                        joint_residuals.ssr / self.lag * joint_residuals.df_resid)
+
+                ## Calculate G-Causality
+                #GC = np.log(joint_variance/independent_variance)
+
+                ## Calculate Linear Transfer Entropy
+                transfer_entropies[i] = GC/2
+
+            TEs.append(transfer_entropies)
+
+
+        ## Store Linear Transfer Entropy from X(t)->Y(t) and from Y(t)->X(t)
+        self.add_results({'TE_linear_XY' : np.array(TEs)[:,0],
+                        'TE_linear_YX' : np.array(TEs)[:,1]})
 
         return transfer_entropies
    
