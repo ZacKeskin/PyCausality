@@ -219,31 +219,6 @@ class TransferEntropy():
                                 np.cov(self.lts.df[[Y,Y_lagged]].values.T),
                                 np.ones(shape=(1,1)) * self.lts.df[Y_lagged].std()**2 ]
 
-    def __regression__(self, DF, endog, regressors=None):
-        """
-        Perform Regression analysis using OLS to calculate variance between Endogenous (Dependent) variable and 
-        OLS regression line of best fit.
-
-        Args:
-            DF          -  (DataFrame)  N columns. Must be indexed as an increasing time series (i.e. past-to-future),
-                                        with equal timesteps between each row
-            endog       -  (string)     Name of the dependent variable
-            regressors  -  (list)       Optional argument for defining specific independent variables (regressors). 
-                                        Otherwise, all other fields in DF are treated as regressor variables
-
-        Returns: (tuple)
-            fitted_values   - (list)    The points corresponding to the OLS line of best fit
-            residuals       - (list)    The distance (L2 norm) between the fitted line and the endogenous vector
-        """
-
-        ## If no custom list of regressors passed, we assume all other columns are required
-        if regressors is None:
-            regressors = list(DF.drop(endog, axis=1).columns.values)
-
-        model = sm.OLS(DF[endog], DF.loc[:, regressors])
-        results = model.fit()
-        return (results.fittedvalues, results.resid)
-
     def linear_TE(self):
         """
         Linear Transfer Entropy for directional causal inference
@@ -282,10 +257,10 @@ class TransferEntropy():
 
                 ## Calculate Residuals after OLS Fitting, for both Independent and Joint Cases
                 joint_df = deepcopy(df).drop(X,axis=1)
-                joint_residuals = sm.OLS(df[Y], sm.add_constant(df[[Y_lagged,X_lagged]])).fit() #self.__regression__(DF=joint_df, endog=Y)
+                joint_residuals = sm.OLS(df[Y], sm.add_constant(df[[Y_lagged,X_lagged]])).fit() 
         
                 independent_df = deepcopy(df).drop([X,X_lagged],axis=1)
-                independent_residuals = sm.OLS(df[Y], sm.add_constant(df[Y_lagged])).fit() #self.__regression__(DF=independent_df, endog=Y)
+                independent_residuals = sm.OLS(df[Y], sm.add_constant(df[Y_lagged])).fit() 
                 
                 ## Calculate Variance of Residuals
                 #joint_variance = np.var(joint_residuals)

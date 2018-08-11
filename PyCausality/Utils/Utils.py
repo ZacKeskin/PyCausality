@@ -4,10 +4,12 @@ from numpy import ma, atleast_2d, pi, sqrt, sum, transpose
 from scipy import stats, optimize, linalg, special
 from scipy.special import gammaln, logsumexp
 from scipy._lib.six import callable, string_types
-
+from scipy.stats.mstats import mquantiles
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
+import matplotlib.cm as cm           
+
 import warnings, sys
 
 ##############################################################################################################
@@ -303,6 +305,31 @@ class AutoBins():
             bins = self.__extend_bins__(bins)
         return bins
 
+    def equiprobable_bins(self,max_bins=15):
+        """ 
+        Returns bins for N-dimensional data, such that each bin should contain equal numbers of
+        samples. 
+        *** Note that due to SciPy's mquantiles() functional design, the equipartion is not strictly true - 
+        it operates independently on the marginals, and so with large bin numbers there are usually 
+        significant discrepancies from desired behaviour. Fortunately, for TE we find equipartioning is
+        extremely beneficial, so we find good accuracy with small bin counts ***
+
+        Args:
+            max_bins        -   (int)       The number of bins in each dimension
+        Returns:
+            bins            -   (dict)      The calculated bin-edges for pdf estimation
+                                            using the histogram method, keyed by df column names
+        """
+        quantiles = np.array([i/max_bins for i in range(0, max_bins+1)])
+        bins = dict(zip(self.axes, mquantiles(a=self.df, prob=quantiles, axis=0).T.tolist()))
+        
+        ## Remove_duplicates
+        bins = {k:sorted(set(bins[k])) for (k,v) in bins.items()} 
+
+        if self.lag is not None:
+            bins = self.__extend_bins__(bins)
+        return bins
+
 class kde(stats.gaussian_kde):
     """
     Subclass of scipy.stats.gaussian_kde. This is to enable the passage of a pre-defined covariance matrix, via the
@@ -489,7 +516,98 @@ def shuffle_series(DF, only=None):
     
     return shuffled_DF
 
-def plot_pdf(df,gridpoints=None, bandwidth=None, covar=None):
+def plot_pdf(df,estimator='kernel',gridpoints=None, bandwidth=None, covar=None, bins=None, show=False):
+    """
+    Wrapper function to plot the pdf of a pandas dataframe
+        
+    Args:
+        df          -       (DataFrame) Samples over which to estimate density
+        estimator   -       (string)    'kernel' or 'histogram'
+        gridpoints  -       (int)       Number of gridpoints when integrating KDE over 
+                                        the domain. Used if estimator='kernel'
+        bandwidth   -       (float)     Bandwidth for KDE (scalar multiple to covariance
+                                        matrix). Used if estimator='kernel'
+        covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
+        bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator = 'histogram'
+        show        -       (Boolean)   whether or not to plot direclty, or simply return axes for later use
+    Returns:
+        ax          -       AxesSubplot object. Can be added to figures to allow multiple plots.
+    """
+    
+    DF = sanitise(df)
+    if len(DF.columns) > 2: 
+            warnings.warn("DataFrame has " + str(len(DF.columns)) + " dimensions. Only 2D or less can be plotted")
+    
+    if estimator == 'histogram':
+        if bins is None:
+            bins = {axis:np.linspace(DF[axis].min(),
+                                     DF[axis].max(),
+                                     9) for axis in DF.columns.values}
+        axes = plot_pdf_histogram(df,bins, show)
+    else:
+        axes = plot_pdf_kernel(df, gridpoints, bandwidth, covar, show)
+    
+    axes.remove()
+
+    return axes
+
+def plot_pdf_histogram(df,bins,show=None):
+    """
+    Function to plot the pdf of a dataset, estimated via histogram.
+        
+    Args:
+        df          -       (DataFrame) Samples over which to estimate density
+        bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator = 'histogram'
+                                        
+    Returns:
+        ax          -       AxesSubplot object, passed back via to plot_pdf() function
+    """
+    DF = sanitise(df) # in case function called directly
+
+    ## Calculate PDF
+    PDF = get_pdf(df=DF,estimator='histogram',bins=bins)
+
+    ## Get x-coords, y-coords for each bar
+    (x_edges,y_edges) = bins.values()
+    Y, X = np.meshgrid(y_edges[:-1], x_edges[:-1])
+    ## Get dx, dy for each bar
+    dxs, dys = np.meshgrid(np.diff(x_edges),np.diff(y_edges))
+
+    ## Colourmap
+    cmap = cm.get_cmap('YlGn') 
+    rgba = [cmap((p-PDF.flatten().min())/PDF.flatten().max()) for p in PDF.flatten()] 
+
+    ## Create subplots
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.bar3d(   x = X.flatten(),    #x coordinates of each bar
+                y = Y.flatten(),      #y coordinates of each bar
+                z = 0,                      #z coordinates of each bar
+                dx = dxs.flatten(),         #width of each bar
+                dy = dys.flatten(),         #depth of each bar
+                dz = PDF.flatten() ,        #height of each bar
+                alpha = 1,                  #transparency
+                color = rgba
+    )
+    ax.set_title("Probability Mass Distribution",fontsize=10)
+    ax.set_xlabel(DF.columns.values[0])
+    ax.set_ylabel(DF.columns.values[1])
+    ax.view_init(5, 45)
+
+    for label in ax.xaxis.get_majorticklabels():
+        label.set_fontsize(8)
+    for label in ax.yaxis.get_majorticklabels():
+        label.set_fontsize(8)
+    for label in ax.zaxis.get_majorticklabels():
+        label.set_fontsize(8)
+    if show == True:
+        plt.show()
+    else:
+        plt.close(fig)
+    return ax
+
+def plot_pdf_kernel(df,gridpoints=None, bandwidth=None, covar=None, show=None):
     """
         Function to plot the pdf, calculated by KDE, of a dataset
         
@@ -502,39 +620,46 @@ def plot_pdf(df,gridpoints=None, bandwidth=None, covar=None):
         covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
                                         
     Returns:
-        n/a
+        ax          -       AxesSubplot object, passed back via to plot_pdf() function
     """
+    DF = sanitise(df)
     ## Estimate the PDF from the data
     if gridpoints is None:
         gridpoints = 20
 
-    pdf = get_pdf(df,gridpoints=gridpoints,bandwidth=bandwidth)    
+    pdf = get_pdf(DF,gridpoints=gridpoints,bandwidth=bandwidth)    
     N = complex(gridpoints) 
-    slices = [slice(dim.min(),dim.max(),N) for dimname, dim in df.iteritems()]
-
-    if len(df.columns) > 3: 
-            print("DataFrame has " + str(len(df.columns)) + " dimensions. Only 2D or less can be plotted")
-        
-    elif len(df.columns) == 3:
-        print("3D Joint Probability Density Plots TBC")
+    slices = [slice(dim.min(),dim.max(),N) for dimname, dim in DF.iteritems()]
+    
 
     ## If 2D Plot Surface
-    elif len(df.columns) == 2:
+    if len(DF.columns) == 2:
         
         X,Y = np.mgrid[slices]
     
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(X, Y, pdf, cmap='inferno')
-
-        ax.set_title("Probability Density Distribution across Coupled system")
-        plt.show()
-
-    elif len(df.columns) ==1:
-        X = np.mgrid[slices]
-        plt.plot(np.linspace(X.min(),X.max(),gridpoints),pdf)
-        plt.show()
+        ax.plot_surface(X, Y, pdf, cmap='YlGn')
         
+        ax.set_xlabel(DF.columns.values[0])
+        ax.set_ylabel(DF.columns.values[1])
+        ax.view_init(5, 45)
+        ax.set_title("Probability Density Distribution across Coupled system",fontsize=10)
+
+    elif len(DF.columns) == 1:
+        X = np.mgrid[slices]
+
+        fig = plt.figure()
+        ax = fig.add_subplot(211, projection='3d')
+        plt.plot(np.linspace(X.min(),X.max(),gridpoints),pdf, axis=ax)
+        ax.set_title("Probability Density Distribution", fontsize=10)
+    
+    if show == True:
+        plt.show()
+    else:
+        plt.close(fig)
+    return ax
+
 def sanitise(df):
     """
         Function to convert DataFrame-like objects into pandas DataFrames
