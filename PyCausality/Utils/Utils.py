@@ -569,7 +569,7 @@ def plot_pdf_histogram(df,bins,show=None):
 
     ## Get x-coords, y-coords for each bar
     (x_edges,y_edges) = bins.values()
-    Y, X = np.meshgrid(y_edges[:-1], x_edges[:-1])
+    X, Y = np.meshgrid(x_edges[:-1], y_edges[:-1])
     ## Get dx, dy for each bar
     dxs, dys = np.meshgrid(np.diff(x_edges),np.diff(y_edges))
 
@@ -581,8 +581,8 @@ def plot_pdf_histogram(df,bins,show=None):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    ax.bar3d(   x = X.flatten(),    #x coordinates of each bar
-                y = Y.flatten(),      #y coordinates of each bar
+    ax.bar3d(   x = X.flatten(),            #x coordinates of each bar
+                y = Y.flatten(),            #y coordinates of each bar
                 z = 0,                      #z coordinates of each bar
                 dx = dxs.flatten(),         #width of each bar
                 dy = dys.flatten(),         #depth of each bar
