@@ -25,7 +25,7 @@ SIMILARITY = 0.75               # Choose value between 0 (independent) to 1 (exa
 AUTOSIMILARITY = 0.3            # Choose value between 0 (independent) to 1 (exact lagged value)
 SEED = None                     # Change pseudo-RNG seed; useful for repeat results & comparing bin choices
 
-MAX_BINS = 16
+MAX_BINS = 7
 N_SHUFFLES = 50
 
 
@@ -33,7 +33,7 @@ N_SHUFFLES = 50
 
 
 ### Uncomment to compare coupled geometric brownian motions
-DATA_POINTS = 300
+DATA_POINTS = 1000
 walks = coupled_random_walks(   S1 = 100, S2 = 90, T = 1, 
                                 N = DATA_POINTS, mu1 = 0, mu2 = 0, 
                                 sigma1 = 1, sigma2 = 1, 
@@ -84,6 +84,8 @@ for LAG in LAGs:
                 'S2':[-5, -2.5, -1, -0.5, 0, 0.5, 1, 2.5, 5],
                 'S2_lag'+str(LAG):[-5, -2.5, -1, -0.5, 0, 0.5, 1, 2.5, 5]
                 }                                
+    auto = AutoBins(DF,lag=LAG)
+    bins = auto.equiprobable_bins(MAX_BINS)
 
     ## Calculate NonLinear TE
     (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'histogram',
@@ -115,23 +117,26 @@ print(results)
 results['TE_XY'].plot(ax=TE_axis,linewidth=1)
 results['TE_YX'].plot(ax=TE_axis,linewidth=1)
 
-TE_axis.set_title('TE versus Lag for Coupled Random Walks; Coupling Strength = ' + str(SIMILARITY))
+TE_axis.set_title('TE versus Lag for Coupled Random Walks; Coupling Strength = ' + str(SIMILARITY),fontsize=11)
 
 TE_axis.set_ylim(ymin=0, ymax=2.5)
-TE_axis.set_ylabel('Transfer Entropy (bits)')
-TE_axis.legend(['TE (S1->S2)', 'TE (S2->S1)'])
+TE_axis.set_ylabel('Transfer Entropy (bits)',fontsize=8)
+TE_axis.legend(['TE (S1->S2)', 'TE (S2->S1)'],fontsize=8)
 
 ## Plot Significance
 results['Z_XY'].plot(ax=Z_axis,linewidth=0.75, linestyle=':')
 results['Z_YX'].plot(ax=Z_axis,linewidth=0.75, linestyle=':')
 
-Z_axis.set_xlabel('LAG')
+Z_axis.set_xlabel('LAG',fontsize=9)
 Z_axis.set_ylim(ymin=-1)
-Z_axis.set_ylabel('Significance (z-score)')
+Z_axis.set_ylabel('Significance (z-score)',fontsize=9)
 Z_axis.legend(['Significance of TE (S1->S2)','Significance of TE (S2->S1)'])
 
 plt.grid(linestyle='dashed')
-
+TE_axis.xaxis.set_tick_params(labelsize=8)
+TE_axis.yaxis.set_tick_params(labelsize=8)
+Z_axis.xaxis.set_tick_params(labelsize=8)
+Z_axis.yaxis.set_tick_params(labelsize=8)
 
 plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Detect_Lag.png'))
 plt.show()

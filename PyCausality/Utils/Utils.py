@@ -330,7 +330,7 @@ class AutoBins():
             bins = self.__extend_bins__(bins)
         return bins
 
-class kde(stats.gaussian_kde):
+class _kde_(stats.gaussian_kde):
     """
     Subclass of scipy.stats.gaussian_kde. This is to enable the passage of a pre-defined covariance matrix, via the
     `covar` parameter. This is handled internally within TransferEntropy class.
@@ -448,7 +448,7 @@ def pdf_kde(df, gridpoints=None, bandwidth=1, covar=None):
     ## Pass Meshgrid to Scipy Gaussian KDE to Estimate PDF
     positions = np.vstack([X.ravel() for X in grids])
     values = df.values.T
-    kernel = kde(values, bw_method=bandwidth, covar=covar)
+    kernel = _kde_(values, bw_method=bandwidth, covar=covar)
     Z = np.reshape(kernel(positions).T, grids[0].shape) 
 
     ## Normalise 
@@ -516,7 +516,8 @@ def shuffle_series(DF, only=None):
     
     return shuffled_DF
 
-def plot_pdf(df,estimator='kernel',gridpoints=None, bandwidth=None, covar=None, bins=None, show=False):
+def plot_pdf(df,estimator='kernel',gridpoints=None, bandwidth=None, covar=None, bins=None, show=False,
+            cmap='inferno', label_fontsize=7):
     """
     Wrapper function to plot the pdf of a pandas dataframe
         
@@ -530,39 +531,60 @@ def plot_pdf(df,estimator='kernel',gridpoints=None, bandwidth=None, covar=None, 
         covar       -       (Numpy ndarray) Covariance matrix between dimensions of df. 
         bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator = 'histogram'
         show        -       (Boolean)   whether or not to plot direclty, or simply return axes for later use
+        cmap        -       (string)    Colour map (see: https://matplotlib.org/examples/color/colormaps_reference.html)
+        label_fontsize -    (float)     Defines the fontsize for the axes labels
+
     Returns:
         ax          -       AxesSubplot object. Can be added to figures to allow multiple plots.
     """
     
     DF = sanitise(df)
-    if len(DF.columns) > 2: 
-            warnings.warn("DataFrame has " + str(len(DF.columns)) + " dimensions. Only 2D or less can be plotted")
-    
-    if estimator == 'histogram':
-        if bins is None:
-            bins = {axis:np.linspace(DF[axis].min(),
-                                     DF[axis].max(),
-                                     9) for axis in DF.columns.values}
-        axes = plot_pdf_histogram(df,bins, show)
+    if len(DF.columns) != 2: 
+            print("DataFrame has " + str(len(DF.columns)) + " dimensions. Only 2D or less can be plotted")
+            axes = None
     else:
-        axes = plot_pdf_kernel(df, gridpoints, bandwidth, covar, show)
-    
-    axes.remove()
+        ## Plot data in Histogram or Kernel form
+        if estimator == 'histogram':
+            
+            if bins is None:
+                bins = {axis:np.linspace(DF[axis].min(),
+                                        DF[axis].max(),
+                                        9) for axis in DF.columns.values}
+            fig, axes = plot_pdf_histogram(df,bins,cmap)
+        else:
+            fig, axes = plot_pdf_kernel(df, gridpoints, bandwidth, covar,cmap)
+
+        ## Format plot
+        axes.set_xlabel(DF.columns.values[0],labelpad=20)
+        axes.set_ylabel(DF.columns.values[1],labelpad=20)
+        for label in axes.xaxis.get_majorticklabels():
+            label.set_fontsize(label_fontsize)
+        for label in axes.yaxis.get_majorticklabels():
+            label.set_fontsize(label_fontsize)
+        for label in axes.zaxis.get_majorticklabels():
+            label.set_fontsize(label_fontsize)
+        axes.view_init(10, 45)
+        if show == True:
+            plt.show()
+        plt.close(fig)
+        
+        axes.remove()
 
     return axes
 
-def plot_pdf_histogram(df,bins,show=None):
+def plot_pdf_histogram(df,bins, cmap='inferno'):
     """
     Function to plot the pdf of a dataset, estimated via histogram.
         
     Args:
         df          -       (DataFrame) Samples over which to estimate density
         bins        -       (Dict of lists) Bin edges for NDHistogram. Used if estimator = 'histogram'
-                                        
+
     Returns:
         ax          -       AxesSubplot object, passed back via to plot_pdf() function
     """
     DF = sanitise(df) # in case function called directly
+
 
     ## Calculate PDF
     PDF = get_pdf(df=DF,estimator='histogram',bins=bins)
@@ -574,7 +596,7 @@ def plot_pdf_histogram(df,bins,show=None):
     dxs, dys = np.meshgrid(np.diff(x_edges),np.diff(y_edges))
 
     ## Colourmap
-    cmap = cm.get_cmap('YlGn') 
+    cmap = cm.get_cmap(cmap) 
     rgba = [cmap((p-PDF.flatten().min())/PDF.flatten().max()) for p in PDF.flatten()] 
 
     ## Create subplots
@@ -590,24 +612,11 @@ def plot_pdf_histogram(df,bins,show=None):
                 alpha = 1,                  #transparency
                 color = rgba
     )
-    ax.set_title("Probability Mass Distribution",fontsize=10)
-    ax.set_xlabel(DF.columns.values[0])
-    ax.set_ylabel(DF.columns.values[1])
-    ax.view_init(5, 45)
+    ax.set_title("Histogram Probability Distribution",fontsize=10)
 
-    for label in ax.xaxis.get_majorticklabels():
-        label.set_fontsize(8)
-    for label in ax.yaxis.get_majorticklabels():
-        label.set_fontsize(8)
-    for label in ax.zaxis.get_majorticklabels():
-        label.set_fontsize(8)
-    if show == True:
-        plt.show()
-    else:
-        plt.close(fig)
-    return ax
+    return fig, ax
 
-def plot_pdf_kernel(df,gridpoints=None, bandwidth=None, covar=None, show=None):
+def plot_pdf_kernel(df,gridpoints=None, bandwidth=None, covar=None, cmap='inferno'):
     """
         Function to plot the pdf, calculated by KDE, of a dataset
         
@@ -630,35 +639,16 @@ def plot_pdf_kernel(df,gridpoints=None, bandwidth=None, covar=None, show=None):
     pdf = get_pdf(DF,gridpoints=gridpoints,bandwidth=bandwidth)    
     N = complex(gridpoints) 
     slices = [slice(dim.min(),dim.max(),N) for dimname, dim in DF.iteritems()]
+    X,Y = np.mgrid[slices]
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, pdf, cmap=cmap)
     
 
-    ## If 2D Plot Surface
-    if len(DF.columns) == 2:
-        
-        X,Y = np.mgrid[slices]
-    
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(X, Y, pdf, cmap='YlGn')
-        
-        ax.set_xlabel(DF.columns.values[0])
-        ax.set_ylabel(DF.columns.values[1])
-        ax.view_init(5, 45)
-        ax.set_title("Probability Density Distribution across Coupled system",fontsize=10)
+    ax.set_title("KDE Probability Distribution",fontsize=10)
 
-    elif len(DF.columns) == 1:
-        X = np.mgrid[slices]
-
-        fig = plt.figure()
-        ax = fig.add_subplot(211, projection='3d')
-        plt.plot(np.linspace(X.min(),X.max(),gridpoints),pdf, axis=ax)
-        ax.set_title("Probability Density Distribution", fontsize=10)
-    
-    if show == True:
-        plt.show()
-    else:
-        plt.close(fig)
-    return ax
+    return fig, ax
 
 def sanitise(df):
     """
