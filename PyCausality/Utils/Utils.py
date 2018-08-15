@@ -411,11 +411,12 @@ def get_pdf(df, gridpoints=None, bandwidth=None, estimator=None, bins=None, cova
         pdf         -       (Numpy ndarray) Probability of a sample being in a specific 
                                         bin (technically a probability mass)
     """
-
+    DF = sanitise(df)
+    
     if estimator == 'histogram':
-        pdf = pdf_histogram(df, bins)
+        pdf = pdf_histogram(DF, bins)
     else:
-        pdf = pdf_kde(df, gridpoints, bandwidth, covar)
+        pdf = pdf_kde(DF, gridpoints, bandwidth, covar)
     return pdf
 
 def pdf_kde(df, gridpoints=None, bandwidth=1, covar=None):
