@@ -21,40 +21,25 @@ import matplotlib.pyplot as plt
 ## Set Parameters
 DATALAG = 3                     # The TE code should pick out this lag, which contributes most information
 LAGs = [r for r in range(1,10,1)]
-SIMILARITY = 0.75               # Choose value between 0 (independent) to 1 (exact lagged value)
+SIMILARITY = 0.025                # Choose value between 0 (independent) to 1 (exact lagged value)
 AUTOSIMILARITY = 0.3            # Choose value between 0 (independent) to 1 (exact lagged value)
 SEED = None                     # Change pseudo-RNG seed; useful for repeat results & comparing bin choices
 
-MAX_BINS = 7
+MAX_BINS = 9
 N_SHUFFLES = 50
-
+DATA_POINTS = 500
 
 ##------------------------------ Create Highly Coupled Time Seriess ------------------------------##
 
 
 ### Uncomment to compare coupled geometric brownian motions
-DATA_POINTS = 1000
 walks = coupled_random_walks(   S1 = 100, S2 = 90, T = 1, 
                                 N = DATA_POINTS, mu1 = 0, mu2 = 0, 
                                 sigma1 = 1, sigma2 = 1, 
                                 alpha = SIMILARITY, epsilon = AUTOSIMILARITY,
                                 lag = DATALAG, seed=SEED)
+
 walks = np.log(walks).diff().iloc[1:]
-
-
-
-### Uncomment to compare coupled logistic map
-"""
-DATA_POINTS = 2**12
-walks = coupled_logistic_map(   S1=0.3, S2=0.8, T=1, N=DATA_POINTS, 
-                                    alpha=SIMILARITY, epsilon=AUTOSIMILARITY, r=4)
-
-bins = {    'S1':list(np.linspace(0,1,MAX_BINS+1)),
-        'S1_lag1':list(np.linspace(0,1,MAX_BINS+1)),
-        'S2':list(np.linspace(0,1,MAX_BINS+1)),
-        'S2_lag1':list(np.linspace(0,1,MAX_BINS+1))
-        }
-"""
 
 
 ## Create Lists for Results
@@ -83,14 +68,18 @@ for LAG in LAGs:
                 'S1_lag'+str(LAG):[-5, -2.5, -1, -0.5, 0, 0.5, 1, 2.5, 5],
                 'S2':[-5, -2.5, -1, -0.5, 0, 0.5, 1, 2.5, 5],
                 'S2_lag'+str(LAG):[-5, -2.5, -1, -0.5, 0, 0.5, 1, 2.5, 5]
-                }                                
-    auto = AutoBins(DF,lag=LAG)
-    bins = auto.equiprobable_bins(MAX_BINS)
+                } 
+                               
+    auto = AutoBins(walks,LAG)
+    bins = auto.equiprobable_bins(5)
+
+    #plot_pdf(DF[['S1','S2']],estimator='histogram',bins=bins,show=True)
 
     ## Calculate NonLinear TE
-    (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'histogram',
+    (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'kernel',
                                             bins = bins,
                                             n_shuffles = N_SHUFFLES)
+
 
     ## Store Results
     TEs_XY.append(TE_XY)
@@ -130,7 +119,7 @@ results['Z_YX'].plot(ax=Z_axis,linewidth=0.75, linestyle=':')
 Z_axis.set_xlabel('LAG',fontsize=9)
 Z_axis.set_ylim(ymin=-1)
 Z_axis.set_ylabel('Significance (z-score)',fontsize=9)
-Z_axis.legend(['Significance of TE (S1->S2)','Significance of TE (S2->S1)'])
+Z_axis.legend(['Significance of TE (S1->S2)','Significance of TE (S2->S1)'], fontsize=8)
 
 plt.grid(linestyle='dashed')
 TE_axis.xaxis.set_tick_params(labelsize=8)
@@ -138,6 +127,6 @@ TE_axis.yaxis.set_tick_params(labelsize=8)
 Z_axis.xaxis.set_tick_params(labelsize=8)
 Z_axis.yaxis.set_tick_params(labelsize=8)
 
-plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Detect_Lag.png'))
+#plt.savefig(os.path.join(os.getcwd(),'PyCausality','Examples','Plots','Detect_Lag.png'))
 plt.show()
 
