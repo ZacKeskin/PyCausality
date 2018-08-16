@@ -63,9 +63,9 @@ class NDHistogram():
             print(self.Hist.shape)
             
             with pd.option_context('display.max_rows', None, 'display.max_columns', 3):
-                print(self.df)
+                print(self.df.tail(40))
 
-            sys.exit("Histogram has zero value. Reduce number of bins or increase data points")
+            sys.exit("User-defined histogram is empty. Check bins or increase data points")
         else:
             self.pdf = self.Hist/self.Hist.sum()
             self._set_entropy_(self.pdf)

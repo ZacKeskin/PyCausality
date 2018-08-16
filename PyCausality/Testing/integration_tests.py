@@ -28,8 +28,14 @@ def nonlinear_TE(fixture):
 
     ## Generate Test Time Series Data
     DF = coupled_random_walks(  S1, S2, T, N, mu1, mu2, 
-                                sigma1, sigma2, alpha, lag,
+                                sigma1, sigma2, alpha, 0, lag,
                                 seed)
+
+    ## Take log difference of each series:
+    DF['S1'] = DF['S1'].pct_change()
+    DF['S2'] = DF['S2'].pct_change()
+    DF = DF.iloc[1:]
+    print(DF.head(6))    
     ## Initialise TE object
     causality = TransferEntropy(DF = DF,
                                 endog = 'S2',          # Dependent Variable
@@ -37,12 +43,16 @@ def nonlinear_TE(fixture):
                                 lag = lag
                                 )
     ## Calculate NonLinear TE
+    #auto = AutoBins(DF,lag)
+    #bins = auto.sigma_bins(15)
     (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'histogram',
                                             bins = bins,
-                                            n_shuffles= 100)
+                                            n_shuffles= 25)
 
     ## Ensure TE X_Y is at least as great as expected (must always be positive)
-    assert TE_XY > TE
+    print(TE_XY, TE_YX)
+    assert TE_XY >= 0
+    assert TE_XY > TE_YX 
 
 
 def test_generator():
@@ -50,3 +60,5 @@ def test_generator():
     for i, (fixture_name,fixture) in enumerate(fixtures.items()):  
         # Pass each structure to test function
         yield nonlinear_TE, fixture
+
+test_generator()

@@ -261,18 +261,11 @@ class TransferEntropy():
         
                 independent_df = deepcopy(df).drop([X,X_lagged],axis=1)
                 independent_residuals = sm.OLS(df[Y], sm.add_constant(df[Y_lagged])).fit() 
-                
-                ## Calculate Variance of Residuals
-                #joint_variance = np.var(joint_residuals)
-                #independent_variance = np.var(independent_residuals)
 
                 ## Adopting methods from statsmodels.stattools.grangercausalitytests
                 GC = ((independent_residuals.ssr - joint_residuals.ssr) /
                         joint_residuals.ssr / self.lag * joint_residuals.df_resid)
-
-                ## Calculate G-Causality
-                #GC = np.log(joint_variance/independent_variance)
-
+                
                 ## Calculate Linear Transfer Entropy
                 transfer_entropies[i] = GC/2
 

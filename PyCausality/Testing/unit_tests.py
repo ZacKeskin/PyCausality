@@ -45,13 +45,14 @@ def test_NDHistogram():
 
     # Check entropy values correspond to test_get_entropy()
 
-
-def test_AutoBins():
+def test_equiprobable_Bins():
     """
-        Test Function TBC
+        There will be a test that each bin in the 2D equiprobable bins contains (roughly) equal number of samples (height)
+        
+        Unfortunately we know that the current algorithm does not guarantee this, so future implementations
+        will be tested on this basis. (see: https://scicomp.stackexchange.com/questions/30023/)
     """
-
-
+    
 def test_LaggedTimeSeries():
     """
         Test Function to ensure LaggedTimeSeries creates new lagged columns for each
@@ -215,35 +216,6 @@ def test_get_pdf():
 
     #plt.show() # It's a cool plot
 
-
-def test_get_pdfND():
-    """
-        We make use of the analytical solution of Entropy of a multivariate normal to ensure that
-        our KDE PDF estimation is accurate. Assuming test_joint_entropy passes, we know that our
-        calculation of entropy from a multidimensional PDF is accurate. Then, we compare how close
-        our entropy from the estimated PDF is, compared to the analytical solution. 
-        
-        We note that this is hugely dependent on the discretisation of our PDF over a grid,
-        as well as the bandwidth used to perform the KDE in the first place. 
-    """
-    gridpoints = 5
-    bandwidth = 0.25
-
-    ## Generate Normally Distibuted data
-    X = skewnorm.rvs(size=2000, a=0, loc=0, scale=1.5)
-    Y = skewnorm.rvs(size=2000, a=0, loc=0, scale=0.1) 
-    data = pd.DataFrame({'X':X, 'Y':Y})
-    
-    ## Calculate Theoretical Entropy
-    covar = np.cov(data.values.T)
-    H = 0.5 * np.log( np.linalg.det(2* np.pi * np.e * covar) )      # Note: in units of 'Nats'
-    H = 2 ** (np.log(H) / np.log(2))    # Convert to 'Bits'
-
-    print(H)
-    print(get_entropy(data, gridpoints=gridpoints, bandwidth=bandwidth))
-    
-    assert False # Until tests completed
-
 def test_joint_entropy():
     """
         Test that our implemented function to return the entropy corresponds 
@@ -280,11 +252,20 @@ def test_joint_entropyND():
     ## The estimated entropy should correspond to scipy's value (to 5 d.p.) 
     assert_almost_equal(get_entropy(data,gridpoints=gridpoints), entropy(pdf.flatten(),base=2), 5)
 
-
 def test_sanitise():
     """
         Test function to ensure user-defined time series data is sanitised to minimise
-        the risk of avoidable errors
+        the risk of avoidable errors (i.e. univariate data in pd.Series form exposes no
+        .columns() property, which is used widely in PyCausality functions.
     """
-    assert False
+    
+    ## Generate series and DF OBJECTS
+    series = pd.Series({'S1':[0,1,2,3,4,5]})
+    DF = pd.DataFrame({'S1':[0,1,2,3,4,5],
+                       'S2':[1,2,3,4,5,6]})
+    assert(isinstance(series, pd.Series))
+    assert(isinstance(DF, pd.DataFrame))
+
+    assert(isinstance(sanitise(series),pd.DataFrame))
+    assert(isinstance(sanitise(DF),pd.DataFrame))
 
