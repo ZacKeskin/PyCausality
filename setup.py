@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name="PyCausality",
-      version="1.0.0",
+      version="1.0.1",
       python_requires=">3.5.2",
       description=" Release of Python package for detection and quantification \
                     of statistical causality between time series, using information \
@@ -13,5 +13,9 @@ setup(name="PyCausality",
       url="https://github.com/ZacKeskin/PyCausality",
       license="GNU GPLv3",
       packages=find_packages(),
-      install_requires = ['pandas','statsmodels','numpy', 'python-dateutil==2.6.1','nose', 'matplotlib'] 
+      install_requires = ['pandas','statsmodels','numpy', 'python-dateutil==2.6.1','nose'] 
+      ## Technically also needs Matplotlib for the plot_pdf() function, however pip chooses
+      #  to install its own pip which is a nightmare on OSX. Safer to let the users
+      # manage their own matplotlib installation, since this is a pretty standard package and
+      # plot_pdf() is in any case only an auxiliary function
      )
