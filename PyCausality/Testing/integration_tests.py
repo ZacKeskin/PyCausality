@@ -11,6 +11,7 @@ from PyCausality.Testing.Test_Utils.Integration_Fixtures import *
 
 def nonlinear_TE(fixture):
     # Unpack fixtures data
+    test    =   fixture.get('name')
     bins    =   fixture.get('bins')
     S1      =   fixture.get('S1')
     S2      =   fixture.get('S2')
@@ -24,7 +25,11 @@ def nonlinear_TE(fixture):
     lag     =   fixture.get('lag')
     seed    =   fixture.get('seed')
     TE      =   fixture.get('expected_TE')
-    tol     =   fixture.get('tolerance')
+    estimator = fixture.get('estimator')
+    assertion = fixture.get('assertion')
+    bandwidth = fixture.get('bandwidth')
+    n_shuffles = fixture.get('shuffles')
+
 
     ## Generate Test Time Series Data
     DF = coupled_random_walks(  S1, S2, T, N, mu1, mu2, 
@@ -35,6 +40,8 @@ def nonlinear_TE(fixture):
     DF['S1'] = DF['S1'].pct_change()
     DF['S2'] = DF['S2'].pct_change()
     DF = DF.iloc[1:]
+
+    print(test)
     print(DF.head(6))    
     ## Initialise TE object
     causality = TransferEntropy(DF = DF,
@@ -42,17 +49,19 @@ def nonlinear_TE(fixture):
                                 exog = 'S1',           # Independent Variable
                                 lag = lag
                                 )
-    ## Calculate NonLinear TE
-    #auto = AutoBins(DF,lag)
-    #bins = auto.sigma_bins(15)
-    (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = 'histogram',
+
+
+    (TE_XY, TE_YX) = causality.nonlinear_TE(pdf_estimator = estimator,
                                             bins = bins,
-                                            n_shuffles= 25)
+                                            bandwidth= bandwidth,
+                                            n_shuffles= n_shuffles)
 
     ## Ensure TE X_Y is at least as great as expected (must always be positive)
-    print(TE_XY, TE_YX)
-    assert TE_XY >= 0
-    assert TE_XY > TE_YX 
+
+    print(assertion)
+    print(TE_XY,TE_YX)
+    print(eval(assertion))
+    assert eval(assertion)
 
 
 def test_generator():
