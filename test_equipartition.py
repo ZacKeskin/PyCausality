@@ -25,6 +25,7 @@ def sanitise(df):
 
 import traceback
 from inspect import getouterframes, currentframe
+import matplotlib.patches as patches
 
 ### We actually need a new histogram - from the ground up, with variable bins in N dimensions (based on
 class Custom_Histogram():
@@ -77,7 +78,7 @@ class Equipartition():
         self.stack_level = len(getouterframes(currentframe()))
 
         ## Calculate bins, starting from x-axis 
-        self.split_cells(self.base_cell, self.DF, 0)
+        self.split_cells(self.base_cell, self.DF, self.DF.iloc[:,0].median())
         
 
     def split_points(self, DF, column, location):
@@ -88,84 +89,40 @@ class Equipartition():
 
     def split_cells(self, cell, cellDF, location):
         
-        #self.counter +=1
-        #self.depth = np.log2(self.counter+1)//1
-
+        ## Calculate depth on stack using inspect frames
         self.depth = len(getouterframes(currentframe())) - (self.stack_level)
-        print(self.depth, self.max_depth)
+
         ## Increment the column so that each slice in the same direction per layer
-        column = int(self.depth % len(cellDF.columns.values))
-        
-        ## Calculate the points in each new cell    
-        #leftdf, rightdf = self.split_points(cellDF,column,cellDF.iloc[:,column].median())
-        
+        column = (1 + self.depth) % len(self.DF.columns.values)
+        #print(self.depth, len(self.DF.columns.values), column)
         ## Calculate the domain of each new cell
         left = deepcopy(cell)
         right = deepcopy(cell)
-
-        left[column][1] = np.nan_to_num(location)
+        left[column][1] =  np.nan_to_num(location)
         right[column][0] = np.nan_to_num(location)
         
-        ## Need to treat these as elements in bins.. like at each step, add left and right (since they are new cells?) to 
-        # The list.. or add the cell term, and then simply recur through all loops.. no only add if at the max depth
-
-        ## Last loop should be before max_depth is reached
-        location = cellDF.iloc[:,column].median()
-        print('Split cell on median = ' + str(location))
+        ## Calculate data for each 
+        #location = cellDF.iloc[:,column].median()
         leftdf,rightdf = self.split_points(cellDF,column,location)
         
-        if self.depth < self.max_depth-1:   
-            ## For each new cell, split cells along next axis
+        ## Update column for next location check
+        column = (1 + column) % len(self.DF.columns.values)
+
+        ## For each new cell, recursively call split_cells for each subdivision, splitting along the next axis
+        if self.depth < self.max_depth-1:    ## Last loop should be before max_depth is reached
+           
             lleft, lright = self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())
             rleft, rright = self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())
         
         if self.depth == self.max_depth-1: 
             
-            #left, right = self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())
-            print('ok', left)
-            self.bins.append(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())[0])
-            self.bins.append(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())[1])
-            self.bins.append(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())[0])
-            self.bins.append(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())[1])
-
-            #self.bins.append(llight)
-            #self.bins.append(rleft)
-            #self.bins.append(rright)
-            #break
+            self.bins.extend(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median()) )
+            #self.bins.append(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())[1])
+            self.bins.extend(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median()) )
+            #self.bins.append(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())[1])
 
 
-            #rightdf = self.split_points(cellDF,column,location)[1]
-            #left, right = self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())
-            #if self.depth == self.max_depth - 1:
-            #    left, right = self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())
-            #self.bins.append(left)
-            #self.bins.append(right)
-            #break
-
-
-#            if self.depth == self.max_depth:
-            """
-            self.dict = list(itertools.chain(
-                                self.dict, 
-                                self.split_cells(cell=left, cellDF=leftdf, location=leftdf.iloc[:,column].median()),
-                                self.split_cells(cell=right, cellDF=rightdf, location=rightdf.iloc[:,column].median())
-                            ))
-            """
-            """
-            self.bins.append(  self.split_cells(cell=left, cellDF=leftdf, location=leftdf.iloc[:,column].median())[0] )
-            self.bins.add(  self.split_cells(cell=right, cellDF=rightdf, location=rightdf.iloc[:,column].median())[1] )
-            """
-
-  #              self.bins.append(left)
-   #             self.bins.append(right)
-                #self.bins = list(itertools.chain(
-                #                    self.bins, 
-                #                    left, right))
         return left, right
-
-    #@property
-    #def bins(self):
-    #    return self.dict
 
 
 
@@ -173,7 +130,8 @@ filepath = os.path.join(os.getcwd(), 'PyCausality','Testing','Test_Utils','test_
 
 DF = pd.read_csv(filepath)
 DF.set_index('date',inplace=True)
-#DF = DF[['S1']].diff()[1:]
+DF = DF[['S1','S2']].diff()[1:]
+print(DF)
 """
 n_axes = len(DF.columns.values)
 """
@@ -182,12 +140,39 @@ n_axes = len(DF.columns.values)
 #DF = pd.DataFrame({'S1':S1})
 
 
-MAX_DEPTH = 3
+MAX_DEPTH = 4
 bins = Equipartition(DF,MAX_DEPTH).bins
 #print(bins)
 
 ## Compare that all bins contain (roughly)equal numbers:
 
+
+import matplotlib.pyplot as plt
+
+
+fig, axes = plt.subplots(figsize=(4, 3.5))
+
+"""
+
+## 1D Plot
+axes.scatter(DF['S1'],[1 for i in range(len(DF))])
+axes.hist(DF.values,bins=100)
+axes.vlines([bin[0] for bin in bins], ymin=0,ymax=50)
+
+for i,bin in enumerate(bins):
+    print(bin)
+    print(len(DF.loc[   ( DF['S1']  >= bin[0][0]) &
+                        ( DF['S1']   < bin[0][1]) 
+                        ].dropna(how='all')))
+
+
+"""
+## 2D Plot
+plt.scatter(DF['S1'],DF['S2'], 5, 'k')
+
+# Create a Rectangle patch for each bin and plot
+#for spine in axes.spines:
+#    spine.set_visible(False)
 for i,bin in enumerate(bins):
     print(bin)
     print(len(DF.loc[   ( DF['S1']  >= bin[0][0]) &
@@ -196,17 +181,19 @@ for i,bin in enumerate(bins):
                         ( DF['S2']   < bin[1][1]) 
                         ].dropna(how='all')))
 
+    #print('bottom left (x,y) = ',(bin[0][0],bin[1][0]) )
+    #print('width = ', bin[0][1]-bin[0][0]  )
+    #print('height = ',  bin[1][1]-bin[1][0])
 
-import matplotlib.pyplot as plt
+    rect = patches.Rectangle(   (bin[0][0],bin[1][0]),
+                                bin[0][1]-bin[0][0],
+                                bin[1][1]-bin[1][0],
+                                linewidth=1,
+                                edgecolor='r',facecolor='none')
+    # Add the patch to the Axes
+    axes.add_patch(rect)
 
+axes.set_ylim()
 
-## 1D Plot
-fig, axes = plt.subplots(figsize=(4, 3.5))
-#axes.scatter(DF['S1'],[1 for i in range(len(DF))])
-#axes.hist(DF.values,bins=15)
-#axes.vlines([bin[0] for bin in bins], ymin=0,ymax=200)
-
-## 2D Plot
-plt.scatter(DF['S1'],DF['S2'])
 
 plt.show()
