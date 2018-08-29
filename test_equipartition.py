@@ -20,19 +20,20 @@ def sanitise(df):
         df = df.to_frame()
     else:
         raise ValueError('Data passed as %s Please ensure your data is stored as a Pandas DataFrame' %(str(type(df))) )
-    return df
+    return df.astype(dtype=np.float32) # Otherwise issue with building histograms
 
 
 import traceback
 from inspect import getouterframes, currentframe
+import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-### We actually need a new histogram - from the ground up, with variable bins in N dimensions (based on
+
 class Custom_Histogram():
 
     def __init__(self, df, bins=None): 
         """
-        bins - List of lists of , coordinates for each hypercube
+        
         """
         k=2
         self.DF = sanitise(df) 
@@ -41,24 +42,70 @@ class Custom_Histogram():
         self.n_vertices = 2**self.n_dims
         self.n_cubes = 2**k
 
-        cubes = np.zeros(shape=(self.n_cubes, self.n_vertices))
-        cubes[0][:] = np.array([0,10,0,10])
-        
-        
-        for i in range(2**k):
-            ## Copy current cube
-            old_cube = deepcopy(cubes[i-1][:])
-            cubes[i][:] = np.vstack(old_cube[:int(self.n_vertices/2)],)
+        if bins is None:
+            self.bins = self.auto_bins()
+        else:
+            self.bins = self.sanitise_bins(bins)
 
-        print(cubes)
+        
+        self._hist_ = np.array([  
+            np.product(  
+                    np.sum(     (self.DF.iloc[:,:] >= self.bins[:,:,0][i][:]) & 
+                                (self.DF.iloc[:,:] <  self.bins[:,:,1][i][:])
+                           ))/len(self.DF) 
+                for i in range(len(self.bins)) ], dtype=np.int32)[:,0]
+        
 
     def sanitise_bins(self,bins):
-        return bins
+        """
+            Generate a dict of BIN_ID:[[x_min, x_max], [y_min,ymax]] etc. 
+        """
+        #bin_dict = {i:bin for (i,bin) in enumerate(bins)}
+        #return bin_dict
+        return np.array(bins)
+    
+    @property
+    def hist(self):
+        """
+        #    Generate a dict of BIN_ID: Count of items therein
+        """
+        return self.hist
+    
+    
+    def plot(self):
+
+        fig, axes = plt.subplots(figsize=(4, 3.5))
+
+        if len(self.DF.columns.values) == 1:
+            ## 1D Plot
+            axes.scatter(self.DF,[1 for i in range(len(self.DF))])
+            axes.hist(self.DF.values,bins=100)
+            axes.vlines([bin[0] for bin in self.bins], ymin=0,ymax=50)
+
+
+        elif len(self.DF.columns.values) == 2:
+            ## 2D Plot
+            plt.scatter(self.DF.iloc[:,0],self.DF.iloc[:,1], 5, 'k')
+
+            # Create a Rectangle patch for each bin and plot
+            for i,bin in enumerate(self.bins):
+                rect = patches.Rectangle(   (bin[0][0],bin[1][0]),
+                                            bin[0][1]-bin[0][0],
+                                            bin[1][1]-bin[1][0],
+                                            linewidth=1,
+                                            edgecolor='r',facecolor='none')
+                axes.add_patch(rect)
+
+        return axes
+
 
 
 class Equipartition():
     """
         Factory class to generate bin edges for custom, contiguous bins in n-dimensions.
+
+        Uses recursion to split data along dimensional medians, similar to kd-trees.
+
         Returns bins suited for custom histogram, with roughly equal probability
     """
 
@@ -94,15 +141,14 @@ class Equipartition():
 
         ## Increment the column so that each slice in the same direction per layer
         column = (1 + self.depth) % len(self.DF.columns.values)
-        #print(self.depth, len(self.DF.columns.values), column)
+
         ## Calculate the domain of each new cell
         left = deepcopy(cell)
         right = deepcopy(cell)
         left[column][1] =  np.nan_to_num(location)
         right[column][0] = np.nan_to_num(location)
         
-        ## Calculate data for each 
-        #location = cellDF.iloc[:,column].median()
+        ## Calculate data for each new cell
         leftdf,rightdf = self.split_points(cellDF,column,location)
         
         ## Update column for next location check
@@ -117,83 +163,13 @@ class Equipartition():
         if self.depth == self.max_depth-1: 
             
             self.bins.extend(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median()) )
-            #self.bins.append(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())[1])
             self.bins.extend(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median()) )
-            #self.bins.append(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())[1])
+           
 
 
         return left, right
 
+    #@property
+    #def bins(self)
+        # Once we swap the self.bins above for self._bins_
 
-
-filepath = os.path.join(os.getcwd(), 'PyCausality','Testing','Test_Utils','test_data.csv')
-
-DF = pd.read_csv(filepath)
-DF.set_index('date',inplace=True)
-DF = DF[['S1','S2']].diff()[1:]
-print(DF)
-"""
-n_axes = len(DF.columns.values)
-"""
-#S1 = np.random.normal(5,2,1000)
-
-#DF = pd.DataFrame({'S1':S1})
-
-
-MAX_DEPTH = 4
-bins = Equipartition(DF,MAX_DEPTH).bins
-#print(bins)
-
-## Compare that all bins contain (roughly)equal numbers:
-
-
-import matplotlib.pyplot as plt
-
-
-fig, axes = plt.subplots(figsize=(4, 3.5))
-
-"""
-
-## 1D Plot
-axes.scatter(DF['S1'],[1 for i in range(len(DF))])
-axes.hist(DF.values,bins=100)
-axes.vlines([bin[0] for bin in bins], ymin=0,ymax=50)
-
-for i,bin in enumerate(bins):
-    print(bin)
-    print(len(DF.loc[   ( DF['S1']  >= bin[0][0]) &
-                        ( DF['S1']   < bin[0][1]) 
-                        ].dropna(how='all')))
-
-
-"""
-## 2D Plot
-plt.scatter(DF['S1'],DF['S2'], 5, 'k')
-
-# Create a Rectangle patch for each bin and plot
-#for spine in axes.spines:
-#    spine.set_visible(False)
-for i,bin in enumerate(bins):
-    print(bin)
-    print(len(DF.loc[   ( DF['S1']  >= bin[0][0]) &
-                        ( DF['S1']   < bin[0][1]) &
-                        ( DF['S2']  >= bin[1][0]) &
-                        ( DF['S2']   < bin[1][1]) 
-                        ].dropna(how='all')))
-
-    #print('bottom left (x,y) = ',(bin[0][0],bin[1][0]) )
-    #print('width = ', bin[0][1]-bin[0][0]  )
-    #print('height = ',  bin[1][1]-bin[1][0])
-
-    rect = patches.Rectangle(   (bin[0][0],bin[1][0]),
-                                bin[0][1]-bin[0][0],
-                                bin[1][1]-bin[1][0],
-                                linewidth=1,
-                                edgecolor='r',facecolor='none')
-    # Add the patch to the Axes
-    axes.add_patch(rect)
-
-axes.set_ylim()
-
-
-plt.show()
