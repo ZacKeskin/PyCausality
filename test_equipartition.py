@@ -27,6 +27,11 @@ import traceback
 from inspect import getouterframes, currentframe
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import mpl_toolkits.mplot3d as mp3d
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+
+
 
 
 class Custom_Histogram():
@@ -49,10 +54,9 @@ class Custom_Histogram():
 
         
         self._hist_ = np.array([  
-            np.product(  
                     np.sum(     (self.DF.iloc[:,:] >= self.bins[:,:,0][i][:]) & 
                                 (self.DF.iloc[:,:] <  self.bins[:,:,1][i][:])
-                           ))/len(self.DF) 
+                           )/self.n_dims
                 for i in range(len(self.bins)) ], dtype=np.int32)[:,0]
         
 
@@ -69,21 +73,23 @@ class Custom_Histogram():
         """
         #    Generate a dict of BIN_ID: Count of items therein
         """
-        return self.hist
+        return self._hist_
     
     
     def plot(self):
+        #print(self.bins)
+        axes = None
 
-        fig, axes = plt.subplots(figsize=(4, 3.5))
-
-        if len(self.DF.columns.values) == 1:
+        if self.n_dims == 1:
+            fig, axes = plt.subplots(figsize=(4, 3.5))
             ## 1D Plot
             axes.scatter(self.DF,[1 for i in range(len(self.DF))])
             axes.hist(self.DF.values,bins=100)
             axes.vlines([bin[0] for bin in self.bins], ymin=0,ymax=50)
 
 
-        elif len(self.DF.columns.values) == 2:
+        elif self.n_dims == 2:
+            fig, axes = plt.subplots(figsize=(4, 3.5))
             ## 2D Plot
             plt.scatter(self.DF.iloc[:,0],self.DF.iloc[:,1], 5, 'k')
 
@@ -96,7 +102,70 @@ class Custom_Histogram():
                                             edgecolor='r',facecolor='none')
                 axes.add_patch(rect)
 
+        elif self.n_dims ==3:
+            fig = plt.figure()
+            axes = fig.add_subplot(111, projection='3d')
+
+
+            axes.scatter(   self.DF.iloc[:,0],
+                            self.DF.iloc[:,1],
+                            self.DF.iloc[:,2],
+                            c='k',
+                            s=2.5,
+                            marker='.'
+            )
+            ## 3D Matplotlib plot
+            for bin in self.bins:
+                ## Vertices of each bin
+                x =    [bin[0][0],bin[0][1],
+                        bin[0][1],bin[0][0],
+                        bin[0][0],bin[0][1],
+                        bin[0][1],bin[0][0]]
+
+                y =    [bin[1][0],bin[1][0],
+                        bin[1][1],bin[1][1],
+                        bin[1][0],bin[1][0],
+                        bin[1][1],bin[1][1]]
+
+                z =    [bin[2][0],bin[2][0],
+                        bin[2][0],bin[2][0],
+                        bin[2][1],bin[2][1],
+                        bin[2][1],bin[2][1]]
+                # Vertices
+                v = [
+                            [x[0],y[0],z[0]],
+                            [x[1],y[1],z[1]],
+                            [x[2],y[2],z[2]],
+                            [x[3],y[3],z[3]],
+                            [x[4],y[4],z[4]],
+                            [x[5],y[5],z[5]],
+                            [x[6],y[6],z[6]],
+                            [x[7],y[7],z[7]]
+                            ]
+
+                faces =     np.array([
+                            [v[0],v[1],v[2],v[3]],
+                            [v[0],v[1],v[5],v[4]],
+                            [v[3],v[0],v[4],v[7]],
+                            [v[1],v[2],v[6],v[5]],
+                            [v[4],v[5],v[6],v[7]],
+                            [v[3],v[2],v[6],v[7]],
+                            ])
+
+
+
+                # plot sides
+                cube = mp3d.art3d.Poly3DCollection(faces, 
+                                    linewidths=0.75)
+
+                cube.set_facecolor((0.9, 0.8, 0.8, 0.15))
+                cube.set_edgecolor((1,0,0,0.8))
+                axes.add_collection3d(cube)
+
+
         return axes
+
+
 
 
 
@@ -152,7 +221,8 @@ class Equipartition():
         leftdf,rightdf = self.split_points(cellDF,column,location)
         
         ## Update column for next location check
-        column = (1 + column) % len(self.DF.columns.values)
+        column =  (1+column) % len(self.DF.columns.values) ## the (1+) is important but can't recall why
+
 
         ## For each new cell, recursively call split_cells for each subdivision, splitting along the next axis
         if self.depth < self.max_depth-1:    ## Last loop should be before max_depth is reached
