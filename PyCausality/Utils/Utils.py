@@ -2,22 +2,317 @@ import pandas as pd
 import numpy as np
 from numpy import ma, atleast_2d, pi, sqrt, sum, transpose
 from scipy import stats, optimize, linalg, special
-from scipy.special import gammaln, logsumexp
+#from scipy.special import gammaln, logsumexp
 from scipy._lib.six import callable, string_types
-from scipy.stats.mstats import mquantiles
+#from scipy.stats.mstats import mquantiles
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.cm as cm           
 
 import warnings, sys
+import os
+from copy import deepcopy
+import traceback
+from inspect import getouterframes, currentframe
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import mpl_toolkits.mplot3d as mp3d
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
 ##############################################################################################################
 ###   U T I L I T Y    C L A S S E S
 ############################################################################################################## 
 
-
 class NDHistogram():
+    """
+        Custom histogram class replacing the numpy implementations previously implemented.
+        The class creates variable-size histogram calculations for N-dimensional data. 
+    """
+
+    def __init__(self, df, bins=None): 
+        """
+        Arguments:
+            df          -   DataFrame of N columns
+            bins        -   List of Lists (of Lists) defining Bin edges. This must take the form:
+                            [   
+                             [x0, x1], [y0,y1], [z0,z1],
+                             [x0, x1], [y0,y1], [z0,z1],
+                             [x0, x1], [y0,y1], [z0,z1],
+                            ]
+                            where each row represents a bin (in this example using 3 dimensions), and the 
+                            elements of each row contain the position in each dimension of the bin-edges. 
+                            The result is cuboidal bins which are highly customisable in N-d space.
+
+                            Note: it is important for the user to define appropriate bins which capture the data.
+                            It is highly recommended that the bins all join to form a contiguous space, rather
+                            like a game of tetris. Note that data points which fall outside the defined bins will
+                            be ignored, potentially impacting probability estimates.
+                            Equally, care must be taken to avoid overlapping bins, or else there will be double counting.
+                            It is recommended to use the provided classes to generate bin edges automatically.
+
+        Returns:
+            self.pdf    -   This is an N-dimensional Probability Density Function, stored as a
+                            Numpy histogram, representing the proportion of samples in each bin.
+
+        """
+
+        self.DF = sanitise(df) 
+        self.n_dims = len(df.columns.values)
+
+        if bins is None:
+            self.bins = self.sanitise_bins(self.auto_bins())
+        else:
+            self.bins = self.sanitise_bins(bins)
+
+        # Initialise empty histogram array
+        self._hist_ = np.array([0 for i in range(len(self.bins))])
+
+        for i, bin in enumerate(self.bins):
+            # For each bin, count the number of datapoints inside it
+            self._hist_[i] =    np.sum(
+                                    np.all( a =     (self.DF.iloc[:,:] >= bin[:,0][:]) & 
+                                                    (self.DF.iloc[:,:] <  bin[:,1][:]) ,
+                                            axis = 1))
+
+        ## TODO: vectorise the process of counting samples in each bin
+        """
+        self._hist_ = np.array([  
+                    np.sum(
+                                    np.all( a =     (self.DF.iloc[:,:] >= bin[:,0][:]) & 
+                                                    (self.DF.iloc[:,:] <  bin[:,1][:]) ,
+                                            axis = 1))
+                for i in range(len(self.bins)) ], dtype=np.int32)[:,0]
+        """
+
+        ## Estimate PDF
+        self.pdf = self._hist_/self._hist_.sum()    
+
+
+    def sanitise_bins(self,bins):
+        ## TODO: Potentially store the bins as a dict, so we have unique identifiers for each bin
+        """
+            Generate a dict of BIN_ID:[[x_min, x_max], [y_min,ymax]] etc. 
+        """
+        #bin_dict = {i:bin for (i,bin) in enumerate(bins)}
+        #return bin_dict
+        return np.array(bins)
+    
+    @property
+    def hist(self):
+        ## TODO: Potentially store the bins as a dict, so we have unique identifiers for each bin
+        """
+        #    Generate a dict of BIN_ID: Count of items therein
+        """
+        return self._hist_
+    
+    def auto_bins(self):
+        return Equipartition(self.DF,3).bins
+    
+    def plot(self):
+        """
+        Function to plot the histogram in 1, 2 or 3 dimensions depending on data.
+            
+        Arguments:
+            N/A
+        Returns:
+            axes         -       AxesSubplot object. To be used like:                                
+                                    ## Generate Histogram
+                                    hist = Custom_Histogram(DF, bins)
+                                    ## Plot Histogram
+                                    axes = hist.plot()
+                                    plt.show()
+        """
+        axes = None
+
+        ## 1D Matplotlib Histogram Plot
+        if self.n_dims == 1:
+            fig, axes = plt.subplots(figsize=(4, 3.5))
+            
+            axes.scatter(self.DF,[1 for i in range(len(self.DF))])
+            axes.hist(self.DF.values,bins=100)
+            axes.vlines([bin[0] for bin in self.bins], ymin=0,ymax=50)
+
+
+        ## 2D Matplotlib Histogram Plot
+        elif self.n_dims == 2:
+            fig, axes = plt.subplots(figsize=(4, 3.5))
+
+            plt.scatter(self.DF.iloc[:,0],self.DF.iloc[:,1], 5, 'k')
+
+            # Create a Rectangle patch for each bin and plot
+            for i,bin in enumerate(self.bins):
+                rect = patches.Rectangle(   (bin[0][0],bin[1][0]),
+                                            bin[0][1]-bin[0][0],
+                                            bin[1][1]-bin[1][0],
+                                            linewidth=1,
+                                            edgecolor='r',facecolor='none')
+                axes.add_patch(rect)
+
+
+        ## 3D Matplotlib Histogram Plot
+        elif self.n_dims ==3:
+            fig = plt.figure()
+            axes = fig.add_subplot(111, projection='3d')
+
+
+            axes.scatter(   self.DF.iloc[:,0],
+                            self.DF.iloc[:,1],
+                            self.DF.iloc[:,2],
+                            c='k',
+                            s=2.5,
+                            marker='.'
+            )
+
+            for bin in self.bins:
+                ## Vertices of each bin
+                x =    [bin[0][0],bin[0][1],
+                        bin[0][1],bin[0][0],
+                        bin[0][0],bin[0][1],
+                        bin[0][1],bin[0][0]]
+
+                y =    [bin[1][0],bin[1][0],
+                        bin[1][1],bin[1][1],
+                        bin[1][0],bin[1][0],
+                        bin[1][1],bin[1][1]]
+
+                z =    [bin[2][0],bin[2][0],
+                        bin[2][0],bin[2][0],
+                        bin[2][1],bin[2][1],
+                        bin[2][1],bin[2][1]]
+                # Vertices
+                v = [
+                            [x[0],y[0],z[0]],
+                            [x[1],y[1],z[1]],
+                            [x[2],y[2],z[2]],
+                            [x[3],y[3],z[3]],
+                            [x[4],y[4],z[4]],
+                            [x[5],y[5],z[5]],
+                            [x[6],y[6],z[6]],
+                            [x[7],y[7],z[7]]
+                            ]
+
+                faces =     np.array([
+                            [v[0],v[1],v[2],v[3]],
+                            [v[0],v[1],v[5],v[4]],
+                            [v[3],v[0],v[4],v[7]],
+                            [v[1],v[2],v[6],v[5]],
+                            [v[4],v[5],v[6],v[7]],
+                            [v[3],v[2],v[6],v[7]],
+                            ])
+
+
+                # plot sides
+                cube = mp3d.art3d.Poly3DCollection(faces, 
+                                    linewidths=0.75)
+
+                cube.set_facecolor((0.9, 0.8, 0.8, 0.15))
+                cube.set_edgecolor((1,0,0,0.8))
+                axes.add_collection3d(cube)
+
+        else:
+            warnings.warn('The dimensions of your data exceed the maximum for plotting (3D)')
+        return axes
+
+class Equipartition():
+    """
+        Factory class to generate bin edges for custom, contiguous bins in n-dimensions.
+
+        Uses recursion to split data along dimensional medians, similar to kd-trees.
+
+        Returns bins suited for custom histogram, with roughly equal probability
+    """
+
+    def __init__(self, df, max_depth=3):
+        ## Initialise class properties
+        self.DF = sanitise(df)
+        self.n_axes = len(self.DF.columns.values)
+        self.base_cell = [ [self.DF.iloc[:,i].min(), self.DF.iloc[:,i].max()] 
+                            for i,axis in enumerate(self.DF.columns.values) ] 
+        self.counter = 0
+        self.max_depth = max_depth
+        #self.bins = set() #{i:[] for i in range(MAX_DEPTH)} 
+        self.bins = []
+
+
+        ## Define baseline for depth of recursion
+        self.stack_level = len(getouterframes(currentframe()))
+
+        ## Calculate bins, starting from x-axis 
+        self.split_cells(self.base_cell, self.DF, self.DF.iloc[:,0].median())
+        
+
+    def split_points(self, DF, column, location):
+        left = DF[DF.iloc[:,column] < location].dropna(how='all') #.iloc[:,column] 
+        right = DF[DF.iloc[:,column] >= location].dropna(how='all') #.iloc[:,column] 
+        return left,right
+
+
+    def split_cells(self, cell, cellDF, location):
+        
+        ## Calculate depth on stack using inspect frames
+        self.depth = len(getouterframes(currentframe())) - (self.stack_level)
+
+        ## Increment the column so that each slice in the same direction per layer
+        column = (1 + self.depth) % len(self.DF.columns.values)
+
+        ## Calculate the domain of each new cell
+        left = deepcopy(cell)
+        right = deepcopy(cell)
+        left[column][1] =  np.nan_to_num(location)
+        right[column][0] = np.nan_to_num(location)
+        
+        ## Calculate data for each new cell
+        leftdf,rightdf = self.split_points(cellDF,column,location)
+        
+        ## Update column for next location check
+        column =  (1+column) % len(self.DF.columns.values) ## the (1+) is important but can't recall why
+
+
+        ## For each new cell, recursively call split_cells for each subdivision, splitting along the next axis
+        if self.depth < self.max_depth-1:    ## Last loop should be before max_depth is reached
+           
+            lleft, lright = self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median())
+            rleft, rright = self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median())
+        
+        if self.depth == self.max_depth-1: 
+            
+            self.bins.extend(self.split_cells(cell=left, cellDF=leftdf,location=leftdf.iloc[:,column].median()) )
+            self.bins.extend(self.split_cells(cell=right, cellDF=rightdf,location=rightdf.iloc[:,column].median()) )
+           
+
+        return left, right
+
+    ## TODO: Potentially return the bins as a dict, so we have unique identifiers for each bin
+    #@property
+    #def bins(self)
+        # Once we swap the self.bins above for self._bins_
+
+class AutoBins():
+    
+    def __init__(self, df, lag=None):
+        """
+        Args:
+            df      -   (DateFrame) Time series data to classify into bins
+            lag     -   (float)     Lag for data to provided bins for lagged columns also
+        Returns:
+            n/a
+        """
+        ## Ensure data is in DataFrame form
+        self.DF = sanitise(df)
+        self.axes = self.df.columns.values
+        self.ndims = len(self.axes)
+        self.N = len(self.df)
+        self.lag = lag
+
+    def equiprobable_bins(self,max_bins=15):
+        bins = Equipartition(self.DF,np.log2(max_bins))
+        return bins
+    
+
+
+class oldNDHistogram():
     """
         Custom histogram class wrapping the default numpy implementations (np.histogram, np.histogramdd). 
         This allows for dimension-agnostic histogram calculations, custom auto-binning and 
@@ -53,21 +348,21 @@ class NDHistogram():
 
         ## Create ND histogram (np.histogramdd doesn't scale down to 1D)
         if self.n_dims == 1:
-            self.Hist, self.Dedges = np.histogram(self.df.values,bins=ordered_bins[0], normed=False)
+            self.hist, self.Dedges = np.histogram(self.df.values,bins=ordered_bins[0], normed=False)
         elif self.n_dims > 1:
-            self.Hist, self.Dedges = np.histogramdd(self.df.values,bins=ordered_bins, normed=False)
+            self.hist, self.Dedges = np.histogramdd(self.df.values,bins=ordered_bins, normed=False)
         
 
         ## Empirical Probability Density Function
-        if self.Hist.sum() == 0:   
-            print(self.Hist.shape)
+        if self.hist.sum() == 0:   
+            print(self.hist.shape)
             
             with pd.option_context('display.max_rows', None, 'display.max_columns', 3):
                 print(self.df.tail(40))
 
             sys.exit("User-defined histogram is empty. Check bins or increase data points")
         else:
-            self.pdf = self.Hist/self.Hist.sum()
+            self.pdf = self.hist/self.hist.sum()
             self._set_entropy_(self.pdf)
   
     def _set_entropy_(self,pdf):
@@ -94,7 +389,7 @@ class NDHistogram():
             self.H_joint = -np.sum(pdf * ma.log2(pdf).filled(0)) 
             self.H[self.df.columns[0]] = self.H_joint
 
-class AutoBins():
+class oldAutoBins():
     """
         Prototyping class for generating data-driven binning.
         Handles lagged time series, so only DF[X(t), Y(t)] required.
@@ -248,7 +543,7 @@ class AutoBins():
                 
                 # Create N-d histogram to count number per bin
                 HDE = NDHistogram(self.df, bins)
-                nk = HDE.Hist
+                nk = HDE.hist
 
                 # M = number of bins in total =  Mx * My * Mz ... etc.
                 M = np.prod(Ms)
