@@ -256,18 +256,15 @@ class TransferEntropy():
                 Y_lagged = Y+'_lag'+str(self.lag)
 
                 ## Calculate Residuals after OLS Fitting, for both Independent and Joint Cases
-                joint_df = deepcopy(df).drop(X,axis=1)
-                joint_residuals = sm.OLS(df[Y], sm.add_constant(df[[Y_lagged,X_lagged]])).fit() 
-        
-                independent_df = deepcopy(df).drop([X,X_lagged],axis=1)
-                independent_residuals = sm.OLS(df[Y], sm.add_constant(df[Y_lagged])).fit() 
+                joint_residuals = sm.OLS(df[Y], sm.add_constant(df[[Y_lagged,X_lagged]])).fit().resid
+                independent_residuals = sm.OLS(df[Y], sm.add_constant(df[Y_lagged])).fit().resid 
 
-                ## Adopting methods from statsmodels.stattools.grangercausalitytests
-                GC = ((independent_residuals.ssr - joint_residuals.ssr) /
-                        joint_residuals.ssr / self.lag * joint_residuals.df_resid)
+                ## Use Geweke's formula for Granger Causality 
+                granger_causality = np.log(    np.var(independent_residuals) /
+                                np.var(joint_residuals))
                 
-                ## Calculate Linear Transfer Entropy
-                transfer_entropies[i] = GC/2
+                ## Calculate Linear Transfer Entropy from Granger Causality
+                transfer_entropies[i] = granger_causality/2
 
             TEs.append(transfer_entropies)
 
