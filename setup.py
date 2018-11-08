@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name="PyCausality",
-      version="1.0.1",
+      version="1.1.0",
       python_requires=">3.5.2",
       description=" Release of Python package for detection and quantification \
                     of statistical causality between time series, using information \
