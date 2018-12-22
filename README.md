@@ -14,7 +14,7 @@ The package can be downloaded from PyPi using pip. We recommend using Anaconda f
 
 It is recommended to import the package object into your research code using:
 
-`from PyCausality import *`
+`from PyCausality.TransferEntropy import *`
 
 Which will give you access to:
 
