@@ -219,7 +219,7 @@ class TransferEntropy():
                                 np.cov(self.lts.df[[Y,Y_lagged]].values.T),
                                 np.ones(shape=(1,1)) * self.lts.df[Y_lagged].std()**2 ]
 
-    def linear_TE(self):
+    def linear_TE(self, df=None, n_shuffles=0):
         """
         Linear Transfer Entropy for directional causal inference
 
@@ -229,12 +229,16 @@ class TransferEntropy():
                             represent the residuals from OLS fitting in the joint (X(t),Y(t)) and reduced (Y(t)) cases
 
         Arguments:
-            n/a
+            n_shuffles  -   (integer)   Number of times to shuffle the dataframe, destroying the time series temporality, in order to 
+                                        perform significance testing.
         Returns:
             transfer_entropies  -  (list) Directional Linear Transfer Entropies from X(t)->Y(t) and Y(t)->X(t) respectively
         """
         ## Prepare lists for storing results
         TEs = []
+        shuffled_TEs = []
+        p_values = []
+        z_scores = []
 
          ## Loop over all windows
         for i,df in enumerate(self.df):
@@ -268,10 +272,40 @@ class TransferEntropy():
 
             TEs.append(transfer_entropies)
 
+            ## Calculate Significance of TE during this window
+            if n_shuffles > 0:
+                p, z, TE_mean = significance(    df = df, 
+                                        TE = transfer_entropies, 
+                                        endog = self.endog, 
+                                        exog = self.exog, 
+                                        lag = self.lag,
+                                        n_shuffles = n_shuffles,
+                                        method='linear')
+
+                shuffled_TEs.append(TE_mean)
+                p_values.append(p)
+                z_scores.append(z)
+
 
         ## Store Linear Transfer Entropy from X(t)->Y(t) and from Y(t)->X(t)
         self.add_results({'TE_linear_XY' : np.array(TEs)[:,0],
-                        'TE_linear_YX' : np.array(TEs)[:,1]})
+                          'TE_linear_YX' : np.array(TEs)[:,1],
+                          'p_value_linear_XY' : None,
+                          'p_value_linear_YX' : None,
+                          'z_score_linear_XY' : 0,
+                          'z_score_linear_YX' : 0
+                          })
+
+        if n_shuffles > 0:
+            ## Store Significance Transfer Entropy from X(t)->Y(t) and from Y(t)->X(t)
+            
+            self.add_results({'p_value_linear_XY' : np.array(p_values)[:,0],
+                              'p_value_linear_YX' : np.array(p_values)[:,1],
+                              'z_score_linear_XY' : np.array(z_scores)[:,0],
+                              'z_score_linear_YX' : np.array(z_scores)[:,1],
+                              'Ave_TE_linear_XY'  : np.array(shuffled_TEs)[:,0],
+                              'Ave_TE_linear_YX'  : np.array(shuffled_TEs)[:,1]
+                              })
 
         return transfer_entropies
    
@@ -290,10 +324,10 @@ class TransferEntropy():
                                             containing bin-edge numerical values. 
             bandwidth       -   (float)     Optional parameter for custom bandwidth in KDE. This is a scalar multiplier to the covariance
                                             matrix used (see: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.gaussian_kde.covariance_factor.html)
-            gridpoints      -   (float)     Number of gridpoints (in each dimension) to discretise the probablity space when performing
+            gridpoints      -   (integer)   Number of gridpoints (in each dimension) to discretise the probablity space when performing
                                             integration of the kernel density estimate. Increasing this gives more precision, but significantly
                                             increases execution time
-            n_shuffles      -   (float)     Number of times to shuffle the dataframe, destroying the time series temporality, in order to 
+            n_shuffles      -   (integer)   Number of times to shuffle the dataframe, destroying the time series temporality, in order to 
                                             perform significance testing.
 
         Returns:
@@ -393,7 +427,8 @@ class TransferEntropy():
                                         n_shuffles = n_shuffles, 
                                         pdf_estimator = pdf_estimator, 
                                         bins = self.bins,
-                                        bandwidth = bandwidth)
+                                        bandwidth = bandwidth,
+                                        method='nonlinear')
 
                 shuffled_TEs.append(TE_mean)
                 p_values.append(p)
@@ -401,16 +436,22 @@ class TransferEntropy():
 
         ## Store Transfer Entropy from X(t)->Y(t) and from Y(t)->X(t)
         self.add_results({'TE_XY' : np.array(TEs)[:,0],
-                          'TE_YX' : np.array(TEs)[:,1]})
+                          'TE_YX' : np.array(TEs)[:,1],
+                          'p_value_XY' : None,
+                          'p_value_YX' : None,
+                          'z_score_XY' : 0,
+                          'z_score_YX' : 0
+                          })
         if n_shuffles > 0:
             ## Store Significance Transfer Entropy from X(t)->Y(t) and from Y(t)->X(t)
             
             self.add_results({'p_value_XY' : np.array(p_values)[:,0],
-                              'p_value_YX' : np.array(p_values)[:,1]})
-            self.add_results({'z_score_XY' : np.array(z_scores)[:,0],
-                              'z_score_YX' : np.array(z_scores)[:,1]})
-            self.add_results({'Ave_TE_XY'  : np.array(shuffled_TEs)[:,0],
-                              'Ave_TE_YX'  : np.array(shuffled_TEs)[:,1]})
+                              'p_value_YX' : np.array(p_values)[:,1],
+                              'z_score_XY' : np.array(z_scores)[:,0],
+                              'z_score_YX' : np.array(z_scores)[:,1],
+                              'Ave_TE_XY'  : np.array(shuffled_TEs)[:,0],
+                              'Ave_TE_YX'  : np.array(shuffled_TEs)[:,1]
+                            })
 
         return transfer_entropies
 
@@ -424,7 +465,7 @@ class TransferEntropy():
         for (k,v) in dict.items():
             self.results[str(k)] = v 
          
-def significance(df, TE, endog, exog, lag, n_shuffles, pdf_estimator, bins, bandwidth, both=True):
+def significance(df, TE, endog, exog, lag, n_shuffles, method, pdf_estimator=None, bins=None, bandwidth=None,  both=True):
         """
         Perform significance analysis on the hypothesis test of statistical causality, for both X(t)->Y(t)
         and Y(t)->X(t) directions
@@ -464,8 +505,11 @@ def significance(df, TE, endog, exog, lag, n_shuffles, pdf_estimator, bins, band
                                                 endog = endog,     
                                                 exog = exog,          
                                                 lag = lag
-                                            )           
-                TE_shuffled = shuffled_causality.nonlinear_TE(df, pdf_estimator, bins, bandwidth, n_shuffles=0)
+                                            )    
+                if method == 'linear':
+                    TE_shuffled = shuffled_causality.linear_TE(df, n_shuffles=0)
+                else:       
+                    TE_shuffled = shuffled_causality.nonlinear_TE(df, pdf_estimator, bins, bandwidth, n_shuffles=0)
                 shuffled_TEs[:,i] = TE_shuffled
 
         

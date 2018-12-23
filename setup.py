@@ -1,9 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(name="PyCausality",
-      version="1.1.0",
+      version="1.2.0",
       python_requires=">3.5.2",
-      description=" Release of Python package for detection and quantification \
+      description=" Extended significance testing to linear TE calculations",
+      long_description="Python package for detection and quantification \
                     of statistical causality between time series, using information \
                     theoretic models. See https://github.com/ZacKeskin/PyCausality for details",
       author="Zac Keskin",
