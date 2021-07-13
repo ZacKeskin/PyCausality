@@ -1,0 +1,8 @@
+[flake8]
+select = B,B9,BLK,C,D,E,F,I,S,W
+docstring-convention = google
+ignore = E203,E501,W503, D100, D104, BLK100
+per-file-ignores = tests/*:S101
+max-line-length = 150
+application-import-names = PyCausality,tests
+import-order-style = google

@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "pycausality"
+version = "0.1.0"
+description = ""
+authors = ["Zac Keskin, Brendan Cowley"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pandas = "^1.3.0"
+nose = "^1.3.7"
+matplotlib = "^3.4.2"
+statsmodels = "^0.12.2"
+
+[tool.poetry.dev-dependencies]
+nose = "^1.3.7"
+mypy = "^0.902"
+nox = "^2021.6.12"
+flake8-annotations = "^2.6.2"
+Sphinx = "^4.0.2"
+black = "^21.6b0"
+flake8 = "^3.9.2"
+flake8-bandit = "^2.1.2"
+flake8-black = "^0.2.1"
+flake8-bugbear = "^21.4.3"
+flake8-import-order = "^0.18.1"
+safety = "^1.10.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+description = "PyCausality is a Python package enabling the rapid and flexible calculation of causality between multiple time series."
+license = "GNU General Public License v3.0"
+readme = "README.md"
+homepage = "https://github.com/BrendanCowley/PyCausality"
+repository = "https://github.com/BrendanCowley/PyCausality"
+keywords = ["hypermodern"]

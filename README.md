@@ -1,3 +1,5 @@
+[![Tests](https://github.com/BrendanCowley/PyCausality/workflows/Tests/badge.svg)](https://github.com/BrendanCowley/PyCausality/actions?workflow=Tests)
+
 # PyCausality
 
 PyCausality is a Python package enabling the rapid and flexible calculation of causality between multiple time series.
@@ -39,7 +41,7 @@ With time series data stored in a pandas DataFrame, perform predictive analysis 
     ## Display TE_XY, TE_YX and significance values
     print(TE.results)
 
-This example shows windowing of the time series, to reduce the risk of non-stationarity impacting the significance of the causality, and to provide multiple views on the overall timeseries (some periods may express large dependencies which could be cancelled out by earlier periods). 
+This example shows windowing of the time series, to reduce the risk of non-stationarity impacting the significance of the causality, and to provide multiple views on the overall timeseries (some periods may express large dependencies which could be cancelled out by earlier periods).
 
 To make use of automatic binning, you may supply the data you would like to bin to the AutoBins class, and generate bins as follows:
 
@@ -48,7 +50,7 @@ To make use of automatic binning, you may supply the data you would like to bin 
     knuth_bins  =    Auto.knuth_bins()
     MIC_bins    =    Auto.MIC_bins()
     sigma_bins  =    Auto.sigma_bins()
-    
+
 
 
 These bins are returned in the expected format (dict of lists) for direct passage into the TransferEntropy class.
@@ -62,7 +64,7 @@ Plots produced from running the code are also provided, and are saved in PyCausa
 
 # Tests
 
-The package comes with both unit and integration tests, designed to be run using nose, the Python testing framework:  http://nose.readthedocs.io/en/latest/index.html 
+The package comes with both unit and integration tests, designed to be run using nose, the Python testing framework:  http://nose.readthedocs.io/en/latest/index.html
 
 To run unit tests, in the installation root directory run:
 
@@ -79,7 +81,7 @@ Alternatively,all tests can be run at once by simply running:
 
 # Contribute
 
-Contributions to PyCausality are actively welcomed. 
+Contributions to PyCausality are actively welcomed.
 
 Planned features for future releases include:
 
@@ -96,7 +98,7 @@ Additional functionality must be accompanied with thorough unit tests, and any P
 
 ## References
 
-The study of information theoretic techniques for predictive analytics is sizeable and growing quickly. It is therefore not feasible to provide a comprehensive list of references informing the development of the PyCausality package. 
+The study of information theoretic techniques for predictive analytics is sizeable and growing quickly. It is therefore not feasible to provide a comprehensive list of references informing the development of the PyCausality package.
 
 However, a solid overview of Transfer Entropy and the key techniques underlying this package will be gleaned from:
 

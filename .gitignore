@@ -5,12 +5,12 @@ Private*
 #vscode files
 .vscode/
 
-#Compiled python 
+#Compiled python
 *.pyc
 
 *DS_Store
 
-# Build Files 
+# Build Files
 build/
 dist/
 dist-archive/
